@@ -1,4 +1,4 @@
-# Hooks System
+# Hooks System (TypeScript/JavaScript)
 
 ## Hook Types
 
@@ -9,20 +9,20 @@
 ## Current Hooks (in ~/.claude/settings.json)
 
 ### PreToolUse
-- **tmux reminder**: Suggests tmux for long-running commands (uv, pytest, etc.)
-- **git push review**: Opens editor for review before push
+- **tmux reminder**: Suggests tmux for long-running commands (npm, pnpm, yarn, cargo, etc.)
+- **git push review**: Opens Zed for review before push
 - **doc blocker**: Blocks creation of unnecessary .md/.txt files
 
 ### PostToolUse
 - **PR creation**: Logs PR URL and GitHub Actions status
-- **Ruff format**: Auto-formats Python files after edit
-- **Mypy check**: Runs mypy after editing .py files
-- **print() warning**: Warns about print() statements in edited files
+- **Prettier**: Auto-formats JS/TS files after edit
+- **TypeScript check**: Runs tsc after editing .ts/.tsx files
+- **console.log warning**: Warns about console.log in edited files
 
 ### Stop
-- **print() audit**: Checks all modified files for print() before session ends
+- **console.log audit**: Checks all modified files for console.log before session ends
 
-## Suggested Python Hooks
+## Suggested TypeScript Hooks
 
 ```json
 {
@@ -33,7 +33,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if [[ \"$CLAUDE_FILE_PATHS\" == *.py ]]; then uv run ruff format $CLAUDE_FILE_PATHS && uv run ruff check --fix $CLAUDE_FILE_PATHS; fi"
+            "command": "if [[ \"$CLAUDE_FILE_PATHS\" == *.ts* ]]; then npx prettier --write $CLAUDE_FILE_PATHS; fi"
           }
         ]
       },
@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if grep -q 'print(' \"$CLAUDE_FILE_PATHS\" 2>/dev/null; then echo '⚠️  print() statement found - use logging instead'; fi"
+            "command": "if [[ \"$CLAUDE_FILE_PATHS\" == *.ts* ]]; then npx tsc --noEmit; fi"
           }
         ]
       }

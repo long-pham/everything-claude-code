@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__firecrawl__firecrawl_search",
+      "WebFetch(domain:docs.astral.sh)",
+      "WebFetch(domain:docs.pytest.org)",
+      "mcp__github__search_code",
+      "mcp__firecrawl__firecrawl_scrape",
+      "Bash(git add:*)",
+      "Bash(git rebase:*)",
+      "Bash(GIT_EDITOR=true git rebase:*)"
+    ]
+  }
+}

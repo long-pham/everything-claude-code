@@ -1,6 +1,6 @@
 ---
 name: security-review
-description: Use this skill when adding authentication, handling user input, working with secrets, creating API endpoints, or implementing payment/sensitive features. Provides comprehensive security checklist and patterns.
+description: Use this skill when adding authentication, handling user input, working with secrets, creating API endpoints, or implementing payment/sensitive features. Provides comprehensive security checklist and patterns for Python/FastAPI.
 ---
 
 # Security Review Skill
@@ -22,84 +22,96 @@ This skill ensures all code follows security best practices and identifies poten
 ### 1. Secrets Management
 
 #### ❌ NEVER Do This
-```typescript
-const apiKey = "sk-proj-xxxxx"  // Hardcoded secret
-const dbPassword = "password123" // In source code
+```python
+API_KEY = "sk-proj-xxxxx"  # Hardcoded secret
+DB_PASSWORD = "password123"  # In source code
 ```
 
 #### ✅ ALWAYS Do This
-```typescript
-const apiKey = process.env.OPENAI_API_KEY
-const dbUrl = process.env.DATABASE_URL
+```python
+from pydantic_settings import BaseSettings
 
-// Verify secrets exist
-if (!apiKey) {
-  throw new Error('OPENAI_API_KEY not configured')
-}
+
+class Settings(BaseSettings):
+    openai_api_key: str
+    database_url: str
+    secret_key: str
+
+    model_config = {"env_file": ".env"}
+
+
+settings = Settings()
+
+# Verify secrets exist at startup
+if not settings.openai_api_key:
+    raise ValueError("OPENAI_API_KEY not configured")
 ```
 
 #### Verification Steps
 - [ ] No hardcoded API keys, tokens, or passwords
 - [ ] All secrets in environment variables
-- [ ] `.env.local` in .gitignore
+- [ ] `.env` in .gitignore
 - [ ] No secrets in git history
-- [ ] Production secrets in hosting platform (Vercel, Railway)
+- [ ] Production secrets in hosting platform
 
 ### 2. Input Validation
 
-#### Always Validate User Input
-```typescript
-import { z } from 'zod'
+#### Always Validate User Input with Pydantic
+```python
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
-// Define validation schema
-const CreateUserSchema = z.object({
-  email: z.string().email(),
-  name: z.string().min(1).max(100),
-  age: z.number().int().min(0).max(150)
-})
 
-// Validate before processing
-export async function createUser(input: unknown) {
-  try {
-    const validated = CreateUserSchema.parse(input)
-    return await db.users.create(validated)
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return { success: false, errors: error.errors }
-    }
-    throw error
-  }
-}
+class CreateUserSchema(BaseModel):
+    email: EmailStr
+    name: str = Field(..., min_length=1, max_length=100)
+    age: int = Field(..., ge=0, le=150)
+
+    @field_validator("name")
+    @classmethod
+    def name_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Name cannot be empty")
+        return v.strip()
+
+
+@router.post("/users")
+async def create_user(data: CreateUserSchema) -> UserResponse:
+    # data is already validated
+    return await user_service.create(data)
 ```
 
 #### File Upload Validation
-```typescript
-function validateFileUpload(file: File) {
-  // Size check (5MB max)
-  const maxSize = 5 * 1024 * 1024
-  if (file.size > maxSize) {
-    throw new Error('File too large (max 5MB)')
-  }
+```python
+from fastapi import UploadFile, HTTPException
 
-  // Type check
-  const allowedTypes = ['image/jpeg', 'image/png', 'image/gif']
-  if (!allowedTypes.includes(file.type)) {
-    throw new Error('Invalid file type')
-  }
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+ALLOWED_TYPES = {"image/jpeg", "image/png", "image/gif"}
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif"}
 
-  // Extension check
-  const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif']
-  const extension = file.name.toLowerCase().match(/\.[^.]+$/)?.[0]
-  if (!extension || !allowedExtensions.includes(extension)) {
-    throw new Error('Invalid file extension')
-  }
 
-  return true
-}
+async def validate_file_upload(file: UploadFile) -> None:
+    # Type check
+    if file.content_type not in ALLOWED_TYPES:
+        raise HTTPException(400, "Invalid file type")
+
+    # Extension check
+    if file.filename:
+        ext = Path(file.filename).suffix.lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            raise HTTPException(400, "Invalid file extension")
+
+    # Size check (read in chunks)
+    size = 0
+    while chunk := await file.read(8192):
+        size += len(chunk)
+        if size > MAX_FILE_SIZE:
+            raise HTTPException(400, "File too large (max 5MB)")
+
+    await file.seek(0)  # Reset for later reading
 ```
 
 #### Verification Steps
-- [ ] All user inputs validated with schemas
+- [ ] All user inputs validated with Pydantic
 - [ ] File uploads restricted (size, type, extension)
 - [ ] No direct use of user input in queries
 - [ ] Whitelist validation (not blacklist)
@@ -108,185 +120,173 @@ function validateFileUpload(file: File) {
 ### 3. SQL Injection Prevention
 
 #### ❌ NEVER Concatenate SQL
-```typescript
-// DANGEROUS - SQL Injection vulnerability
-const query = `SELECT * FROM users WHERE email = '${userEmail}'`
-await db.query(query)
+```python
+# DANGEROUS - SQL Injection vulnerability
+query = f"SELECT * FROM users WHERE email = '{user_email}'"
+cursor.execute(query)
 ```
 
 #### ✅ ALWAYS Use Parameterized Queries
-```typescript
-// Safe - parameterized query
-const { data } = await supabase
-  .from('users')
-  .select('*')
-  .eq('email', userEmail)
-
-// Or with raw SQL
-await db.query(
-  'SELECT * FROM users WHERE email = $1',
-  [userEmail]
+```python
+# Safe - parameterized query
+cursor.execute(
+    "SELECT * FROM users WHERE email = %s",
+    (user_email,)
 )
+
+# Or with SQLAlchemy ORM (preferred)
+user = session.query(User).filter(User.email == user_email).first()
 ```
 
 #### Verification Steps
 - [ ] All database queries use parameterized queries
-- [ ] No string concatenation in SQL
-- [ ] ORM/query builder used correctly
-- [ ] Supabase queries properly sanitized
+- [ ] No string concatenation/formatting in SQL
+- [ ] SQLAlchemy ORM used correctly
+- [ ] No raw SQL with user input
 
 ### 4. Authentication & Authorization
 
-#### JWT Token Handling
-```typescript
-// ❌ WRONG: localStorage (vulnerable to XSS)
-localStorage.setItem('token', token)
+#### Password Hashing
+```python
+from passlib.context import CryptContext
 
-// ✅ CORRECT: httpOnly cookies
-res.setHeader('Set-Cookie',
-  `token=${token}; HttpOnly; Secure; SameSite=Strict; Max-Age=3600`)
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return pwd_context.verify(plain, hashed)
+```
+
+#### JWT Token Handling
+```python
+from datetime import datetime, timedelta
+from fastapi import Depends, HTTPException
+from fastapi.security import OAuth2PasswordBearer
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+
+async def get_current_user(
+    token: str = Depends(oauth2_scheme),
+) -> User:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(401, "Invalid token")
+    except jwt.InvalidTokenError:
+        raise HTTPException(401, "Invalid token")
+
+    user = await get_user(user_id)
+    if not user:
+        raise HTTPException(401, "User not found")
+
+    return user
 ```
 
 #### Authorization Checks
-```typescript
-export async function deleteUser(userId: string, requesterId: string) {
-  // ALWAYS verify authorization first
-  const requester = await db.users.findUnique({
-    where: { id: requesterId }
-  })
+```python
+from enum import Enum
 
-  if (requester.role !== 'admin') {
-    return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 403 }
-    )
-  }
 
-  // Proceed with deletion
-  await db.users.delete({ where: { id: userId } })
-}
-```
+class Permission(str, Enum):
+    READ = "read"
+    WRITE = "write"
+    DELETE = "delete"
+    ADMIN = "admin"
 
-#### Row Level Security (Supabase)
-```sql
--- Enable RLS on all tables
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 
--- Users can only view their own data
-CREATE POLICY "Users view own data"
-  ON users FOR SELECT
-  USING (auth.uid() = id);
+def require_permission(permission: Permission):
+    async def dependency(user: User = Depends(get_current_user)) -> User:
+        if permission not in user.permissions:
+            raise HTTPException(403, "Insufficient permissions")
+        return user
+    return Depends(dependency)
 
--- Users can only update their own data
-CREATE POLICY "Users update own data"
-  ON users FOR UPDATE
-  USING (auth.uid() = id);
+
+@router.delete("/users/{user_id}")
+async def delete_user(
+    user_id: str,
+    current_user: User = require_permission(Permission.ADMIN),
+) -> dict:
+    await user_service.delete(user_id)
+    return {"success": True}
 ```
 
 #### Verification Steps
-- [ ] Tokens stored in httpOnly cookies (not localStorage)
+- [ ] Passwords hashed with bcrypt
+- [ ] JWT tokens properly validated
 - [ ] Authorization checks before sensitive operations
-- [ ] Row Level Security enabled in Supabase
 - [ ] Role-based access control implemented
 - [ ] Session management secure
 
-### 5. XSS Prevention
+### 5. Dangerous Operations - NEVER on User Input
 
-#### Sanitize HTML
-```typescript
-import DOMPurify from 'isomorphic-dompurify'
+```python
+# ❌ DANGEROUS - Code execution risks
+eval(user_input)        # Arbitrary code execution
+exec(user_input)        # Arbitrary code execution
+pickle.loads(data)      # Arbitrary code execution
+yaml.load(data)         # Use yaml.safe_load()
+subprocess.run(cmd, shell=True)  # Command injection
 
-// ALWAYS sanitize user-provided HTML
-function renderUserContent(html: string) {
-  const clean = DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'p'],
-    ALLOWED_ATTR: []
-  })
-  return <div dangerouslySetInnerHTML={{ __html: clean }} />
-}
+# ✅ SAFE alternatives
+import ast
+ast.literal_eval(user_input)  # Only for literal structures
+
+import yaml
+yaml.safe_load(data)  # Safe YAML parsing
+
+import subprocess
+subprocess.run([cmd, arg1, arg2], shell=False)  # No shell
 ```
 
-#### Content Security Policy
-```typescript
-// next.config.js
-const securityHeaders = [
-  {
-    key: 'Content-Security-Policy',
-    value: `
-      default-src 'self';
-      script-src 'self' 'unsafe-eval' 'unsafe-inline';
-      style-src 'self' 'unsafe-inline';
-      img-src 'self' data: https:;
-      font-src 'self';
-      connect-src 'self' https://api.example.com;
-    `.replace(/\s{2,}/g, ' ').trim()
-  }
-]
-```
+### 6. Rate Limiting
 
-#### Verification Steps
-- [ ] User-provided HTML sanitized
-- [ ] CSP headers configured
-- [ ] No unvalidated dynamic content rendering
-- [ ] React's built-in XSS protection used
+```python
+from fastapi import Request
+from collections import defaultdict
+from time import time
 
-### 6. CSRF Protection
 
-#### CSRF Tokens
-```typescript
-import { csrf } from '@/lib/csrf'
+class RateLimiter:
+    def __init__(self) -> None:
+        self.requests: dict[str, list[float]] = defaultdict(list)
 
-export async function POST(request: Request) {
-  const token = request.headers.get('X-CSRF-Token')
+    def is_allowed(
+        self,
+        key: str,
+        max_requests: int = 100,
+        window_seconds: int = 60,
+    ) -> bool:
+        now = time()
+        self.requests[key] = [
+            t for t in self.requests[key]
+            if now - t < window_seconds
+        ]
 
-  if (!csrf.verify(token)) {
-    return NextResponse.json(
-      { error: 'Invalid CSRF token' },
-      { status: 403 }
-    )
-  }
+        if len(self.requests[key]) >= max_requests:
+            return False
 
-  // Process request
-}
-```
+        self.requests[key].append(now)
+        return True
 
-#### SameSite Cookies
-```typescript
-res.setHeader('Set-Cookie',
-  `session=${sessionId}; HttpOnly; Secure; SameSite=Strict`)
-```
 
-#### Verification Steps
-- [ ] CSRF tokens on state-changing operations
-- [ ] SameSite=Strict on all cookies
-- [ ] Double-submit cookie pattern implemented
+limiter = RateLimiter()
 
-### 7. Rate Limiting
 
-#### API Rate Limiting
-```typescript
-import rateLimit from 'express-rate-limit'
+@router.get("/api/search")
+async def search(request: Request) -> SearchResponse:
+    client_ip = request.client.host if request.client else "unknown"
 
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // 100 requests per window
-  message: 'Too many requests'
-})
+    if not limiter.is_allowed(client_ip, max_requests=10, window_seconds=60):
+        raise HTTPException(429, "Rate limit exceeded")
 
-// Apply to routes
-app.use('/api/', limiter)
-```
-
-#### Expensive Operations
-```typescript
-// Aggressive rate limiting for searches
-const searchLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 10, // 10 requests per minute
-  message: 'Too many search requests'
-})
-
-app.use('/api/search', searchLimiter)
+    return await perform_search()
 ```
 
 #### Verification Steps
@@ -295,37 +295,33 @@ app.use('/api/search', searchLimiter)
 - [ ] IP-based rate limiting
 - [ ] User-based rate limiting (authenticated)
 
-### 8. Sensitive Data Exposure
+### 7. Sensitive Data Exposure
 
 #### Logging
-```typescript
-// ❌ WRONG: Logging sensitive data
-console.log('User login:', { email, password })
-console.log('Payment:', { cardNumber, cvv })
+```python
+import logging
 
-// ✅ CORRECT: Redact sensitive data
-console.log('User login:', { email, userId })
-console.log('Payment:', { last4: card.last4, userId })
+logger = logging.getLogger(__name__)
+
+# ❌ WRONG: Logging sensitive data
+logger.info(f"User login: {email}, {password}")
+logger.info(f"Payment: {card_number}, {cvv}")
+
+# ✅ CORRECT: Redact sensitive data
+logger.info(f"User login: {email}")
+logger.info(f"Payment: card ending {card_last4}")
 ```
 
 #### Error Messages
-```typescript
-// ❌ WRONG: Exposing internal details
-catch (error) {
-  return NextResponse.json(
-    { error: error.message, stack: error.stack },
-    { status: 500 }
-  )
-}
+```python
+# ❌ WRONG: Exposing internal details
+except Exception as e:
+    return {"error": str(e), "traceback": traceback.format_exc()}
 
-// ✅ CORRECT: Generic error messages
-catch (error) {
-  console.error('Internal error:', error)
-  return NextResponse.json(
-    { error: 'An error occurred. Please try again.' },
-    { status: 500 }
-  )
-}
+# ✅ CORRECT: Generic error messages
+except Exception as e:
+    logger.exception("Internal error")
+    return {"error": "An error occurred. Please try again."}
 ```
 
 #### Verification Steps
@@ -334,130 +330,116 @@ catch (error) {
 - [ ] Detailed errors only in server logs
 - [ ] No stack traces exposed to users
 
-### 9. Blockchain Security (Solana)
+### 8. Dependency Security
 
-#### Wallet Verification
-```typescript
-import { verify } from '@solana/web3.js'
-
-async function verifyWalletOwnership(
-  publicKey: string,
-  signature: string,
-  message: string
-) {
-  try {
-    const isValid = verify(
-      Buffer.from(message),
-      Buffer.from(signature, 'base64'),
-      Buffer.from(publicKey, 'base64')
-    )
-    return isValid
-  } catch (error) {
-    return false
-  }
-}
-```
-
-#### Transaction Verification
-```typescript
-async function verifyTransaction(transaction: Transaction) {
-  // Verify recipient
-  if (transaction.to !== expectedRecipient) {
-    throw new Error('Invalid recipient')
-  }
-
-  // Verify amount
-  if (transaction.amount > maxAmount) {
-    throw new Error('Amount exceeds limit')
-  }
-
-  // Verify user has sufficient balance
-  const balance = await getBalance(transaction.from)
-  if (balance < transaction.amount) {
-    throw new Error('Insufficient balance')
-  }
-
-  return true
-}
-```
-
-#### Verification Steps
-- [ ] Wallet signatures verified
-- [ ] Transaction details validated
-- [ ] Balance checks before transactions
-- [ ] No blind transaction signing
-
-### 10. Dependency Security
-
-#### Regular Updates
 ```bash
 # Check for vulnerabilities
-npm audit
+uv add --dev pip-audit
+uv run pip-audit
 
-# Fix automatically fixable issues
-npm audit fix
+# Fix automatically
+uv run pip-audit --fix
 
-# Update dependencies
-npm update
-
-# Check for outdated packages
-npm outdated
-```
-
-#### Lock Files
-```bash
-# ALWAYS commit lock files
-git add package-lock.json
-
-# Use in CI/CD for reproducible builds
-npm ci  # Instead of npm install
+# Check in CI/CD
+uv run pip-audit --strict --progress-spinner off
 ```
 
 #### Verification Steps
 - [ ] Dependencies up to date
-- [ ] No known vulnerabilities (npm audit clean)
-- [ ] Lock files committed
-- [ ] Dependabot enabled on GitHub
+- [ ] No known vulnerabilities
+- [ ] Lock files committed (uv.lock)
 - [ ] Regular security updates
+
+### 9. CORS Configuration
+
+```python
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI()
+
+# ✅ GOOD: Specific origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://myapp.com", "https://admin.myapp.com"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
+# ❌ BAD: Allow all origins with credentials
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Never with credentials!
+    allow_credentials=True,
+)
+```
+
+### 10. Security Headers
+
+```python
+from fastapi import FastAPI
+from starlette.middleware.base import BaseHTTPMiddleware
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains"
+        )
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
+```
 
 ## Security Testing
 
 ### Automated Security Tests
-```typescript
-// Test authentication
-test('requires authentication', async () => {
-  const response = await fetch('/api/protected')
-  expect(response.status).toBe(401)
-})
+```python
+import pytest
+from httpx import AsyncClient
 
-// Test authorization
-test('requires admin role', async () => {
-  const response = await fetch('/api/admin', {
-    headers: { Authorization: `Bearer ${userToken}` }
-  })
-  expect(response.status).toBe(403)
-})
 
-// Test input validation
-test('rejects invalid input', async () => {
-  const response = await fetch('/api/users', {
-    method: 'POST',
-    body: JSON.stringify({ email: 'not-an-email' })
-  })
-  expect(response.status).toBe(400)
-})
+@pytest.mark.asyncio
+class TestSecurity:
+    async def test_requires_authentication(
+        self, client: AsyncClient
+    ) -> None:
+        response = await client.get("/api/protected")
+        assert response.status_code == 401
 
-// Test rate limiting
-test('enforces rate limits', async () => {
-  const requests = Array(101).fill(null).map(() =>
-    fetch('/api/endpoint')
-  )
+    async def test_requires_admin_role(
+        self, client: AsyncClient, user_token: str
+    ) -> None:
+        response = await client.get(
+            "/api/admin",
+            headers={"Authorization": f"Bearer {user_token}"},
+        )
+        assert response.status_code == 403
 
-  const responses = await Promise.all(requests)
-  const tooManyRequests = responses.filter(r => r.status === 429)
+    async def test_rejects_invalid_input(
+        self, client: AsyncClient
+    ) -> None:
+        response = await client.post(
+            "/api/users",
+            json={"email": "not-an-email"},
+        )
+        assert response.status_code == 422
 
-  expect(tooManyRequests.length).toBeGreaterThan(0)
-})
+    async def test_enforces_rate_limits(
+        self, client: AsyncClient
+    ) -> None:
+        responses = [
+            await client.get("/api/endpoint")
+            for _ in range(101)
+        ]
+        rate_limited = [r for r in responses if r.status_code == 429]
+        assert len(rate_limited) > 0
 ```
 
 ## Pre-Deployment Security Checklist
@@ -465,29 +447,25 @@ test('enforces rate limits', async () => {
 Before ANY production deployment:
 
 - [ ] **Secrets**: No hardcoded secrets, all in env vars
-- [ ] **Input Validation**: All user inputs validated
-- [ ] **SQL Injection**: All queries parameterized
-- [ ] **XSS**: User content sanitized
-- [ ] **CSRF**: Protection enabled
-- [ ] **Authentication**: Proper token handling
+- [ ] **Input Validation**: All user inputs validated with Pydantic
+- [ ] **SQL Injection**: All queries parameterized (SQLAlchemy ORM)
+- [ ] **Authentication**: Proper JWT/session handling
 - [ ] **Authorization**: Role checks in place
 - [ ] **Rate Limiting**: Enabled on all endpoints
 - [ ] **HTTPS**: Enforced in production
-- [ ] **Security Headers**: CSP, X-Frame-Options configured
+- [ ] **Security Headers**: Configured
 - [ ] **Error Handling**: No sensitive data in errors
 - [ ] **Logging**: No sensitive data logged
-- [ ] **Dependencies**: Up to date, no vulnerabilities
-- [ ] **Row Level Security**: Enabled in Supabase
+- [ ] **Dependencies**: Up to date, no vulnerabilities (pip-audit)
 - [ ] **CORS**: Properly configured
 - [ ] **File Uploads**: Validated (size, type)
-- [ ] **Wallet Signatures**: Verified (if blockchain)
+- [ ] **No dangerous operations**: No eval/exec/pickle on user input
 
 ## Resources
 
 - [OWASP Top 10](https://owasp.org/www-project-top-ten/)
-- [Next.js Security](https://nextjs.org/docs/security)
-- [Supabase Security](https://supabase.com/docs/guides/auth)
-- [Web Security Academy](https://portswigger.net/web-security)
+- [FastAPI Security](https://fastapi.tiangolo.com/tutorial/security/)
+- [Pydantic Validation](https://docs.pydantic.dev/latest/)
 
 ---
 

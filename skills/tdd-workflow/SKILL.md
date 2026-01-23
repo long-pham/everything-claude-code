@@ -1,6 +1,6 @@
 ---
 name: tdd-workflow
-description: Use this skill when writing new features, fixing bugs, or refactoring code. Enforces test-driven development with 80%+ coverage including unit, integration, and E2E tests.
+description: Use this skill when writing new features, fixing bugs, or refactoring code. Enforces test-driven development with 80%+ coverage using pytest.
 ---
 
 # Test-Driven Development Workflow
@@ -13,7 +13,7 @@ This skill ensures all code development follows TDD principles with comprehensiv
 - Fixing bugs or issues
 - Refactoring existing code
 - Adding API endpoints
-- Creating new components
+- Creating new services or modules
 
 ## Core Principles
 
@@ -30,7 +30,7 @@ ALWAYS write tests first, then implement code to make tests pass.
 
 #### Unit Tests
 - Individual functions and utilities
-- Component logic
+- Class methods
 - Pure functions
 - Helpers and utilities
 
@@ -40,11 +40,10 @@ ALWAYS write tests first, then implement code to make tests pass.
 - Service interactions
 - External API calls
 
-#### E2E Tests (Playwright)
+#### E2E Tests
 - Critical user flows
 - Complete workflows
-- Browser automation
-- UI interactions
+- API automation
 
 ## TDD Workflow Steps
 
@@ -60,45 +59,47 @@ so that I can find relevant markets even without exact keywords.
 ### Step 2: Generate Test Cases
 For each user journey, create comprehensive test cases:
 
-```typescript
-describe('Semantic Search', () => {
-  it('returns relevant markets for query', async () => {
-    // Test implementation
-  })
+```python
+import pytest
+from my_project.services import MarketService
 
-  it('handles empty query gracefully', async () => {
-    // Test edge case
-  })
 
-  it('falls back to substring search when Redis unavailable', async () => {
-    // Test fallback behavior
-  })
+class TestSemanticSearch:
+    async def test_returns_relevant_markets_for_query(self) -> None:
+        # Test implementation
+        ...
 
-  it('sorts results by similarity score', async () => {
-    // Test sorting logic
-  })
-})
+    async def test_handles_empty_query_gracefully(self) -> None:
+        # Test edge case
+        ...
+
+    async def test_falls_back_when_redis_unavailable(self) -> None:
+        # Test fallback behavior
+        ...
+
+    async def test_sorts_results_by_similarity_score(self) -> None:
+        # Test sorting logic
+        ...
 ```
 
 ### Step 3: Run Tests (They Should Fail)
 ```bash
-npm test
+uv run pytest
 # Tests should fail - we haven't implemented yet
 ```
 
 ### Step 4: Implement Code
 Write minimal code to make tests pass:
 
-```typescript
-// Implementation guided by tests
-export async function searchMarkets(query: string) {
-  // Implementation here
-}
+```python
+async def search_markets(query: str) -> list[Market]:
+    """Implementation guided by tests."""
+    ...
 ```
 
 ### Step 5: Run Tests Again
 ```bash
-npm test
+uv run pytest
 # Tests should now pass
 ```
 
@@ -111,275 +112,299 @@ Improve code quality while keeping tests green:
 
 ### Step 7: Verify Coverage
 ```bash
-npm run test:coverage
+uv run pytest --cov=src --cov-report=html
 # Verify 80%+ coverage achieved
 ```
 
 ## Testing Patterns
 
-### Unit Test Pattern (Jest/Vitest)
-```typescript
-import { render, screen, fireEvent } from '@testing-library/react'
-import { Button } from './Button'
+### Unit Test Pattern (pytest)
+```python
+import pytest
+from my_project.services import UserService
 
-describe('Button Component', () => {
-  it('renders with correct text', () => {
-    render(<Button>Click me</Button>)
-    expect(screen.getByText('Click me')).toBeInTheDocument()
-  })
 
-  it('calls onClick when clicked', () => {
-    const handleClick = jest.fn()
-    render(<Button onClick={handleClick}>Click</Button>)
+class TestUserService:
+    def test_creates_user_with_valid_data(self) -> None:
+        # Arrange
+        service = UserService()
+        data = {"name": "John", "email": "john@example.com"}
 
-    fireEvent.click(screen.getByRole('button'))
+        # Act
+        result = service.create_user(data)
 
-    expect(handleClick).toHaveBeenCalledTimes(1)
-  })
+        # Assert
+        assert result.name == "John"
+        assert result.email == "john@example.com"
 
-  it('is disabled when disabled prop is true', () => {
-    render(<Button disabled>Click</Button>)
-    expect(screen.getByRole('button')).toBeDisabled()
-  })
-})
+    def test_raises_on_invalid_email(self) -> None:
+        # Arrange
+        service = UserService()
+        data = {"name": "John", "email": "invalid"}
+
+        # Act & Assert
+        with pytest.raises(ValueError, match="Invalid email"):
+            service.create_user(data)
 ```
 
 ### API Integration Test Pattern
-```typescript
-import { NextRequest } from 'next/server'
-import { GET } from './route'
+```python
+import pytest
+from httpx import AsyncClient
+from my_project.main import app
 
-describe('GET /api/markets', () => {
-  it('returns markets successfully', async () => {
-    const request = new NextRequest('http://localhost/api/markets')
-    const response = await GET(request)
-    const data = await response.json()
 
-    expect(response.status).toBe(200)
-    expect(data.success).toBe(true)
-    expect(Array.isArray(data.data)).toBe(true)
-  })
+@pytest.mark.asyncio
+class TestMarketsAPI:
+    async def test_returns_markets_successfully(self) -> None:
+        async with AsyncClient(app=app, base_url="http://test") as client:
+            response = await client.get("/api/markets")
 
-  it('validates query parameters', async () => {
-    const request = new NextRequest('http://localhost/api/markets?limit=invalid')
-    const response = await GET(request)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert isinstance(data["data"], list)
 
-    expect(response.status).toBe(400)
-  })
+    async def test_validates_query_parameters(self) -> None:
+        async with AsyncClient(app=app, base_url="http://test") as client:
+            response = await client.get("/api/markets?limit=invalid")
 
-  it('handles database errors gracefully', async () => {
-    // Mock database failure
-    const request = new NextRequest('http://localhost/api/markets')
-    // Test error handling
-  })
-})
+        assert response.status_code == 422
+
+    async def test_handles_database_errors_gracefully(self) -> None:
+        # Mock database failure
+        ...
 ```
 
-### E2E Test Pattern (Playwright)
-```typescript
-import { test, expect } from '@playwright/test'
+### E2E Test Pattern (pytest + httpx)
+```python
+import pytest
+from httpx import AsyncClient
 
-test('user can search and filter markets', async ({ page }) => {
-  // Navigate to markets page
-  await page.goto('/')
-  await page.click('a[href="/markets"]')
 
-  // Verify page loaded
-  await expect(page.locator('h1')).toContainText('Markets')
+@pytest.mark.asyncio
+@pytest.mark.e2e
+class TestMarketFlow:
+    async def test_user_can_search_and_filter_markets(
+        self, authenticated_client: AsyncClient
+    ) -> None:
+        # Search for markets
+        response = await authenticated_client.get(
+            "/api/markets/search",
+            params={"q": "election"}
+        )
+        assert response.status_code == 200
 
-  // Search for markets
-  await page.fill('input[placeholder="Search markets"]', 'election')
+        data = response.json()
+        assert len(data["data"]) > 0
+        assert "election" in data["data"][0]["name"].lower()
 
-  // Wait for debounce and results
-  await page.waitForTimeout(600)
+    async def test_user_can_create_market(
+        self, authenticated_client: AsyncClient
+    ) -> None:
+        # Create market
+        response = await authenticated_client.post(
+            "/api/markets",
+            json={
+                "name": "Test Market",
+                "description": "Test description",
+                "end_date": "2025-12-31T00:00:00Z"
+            }
+        )
+        assert response.status_code == 201
 
-  // Verify search results displayed
-  const results = page.locator('[data-testid="market-card"]')
-  await expect(results).toHaveCount(5, { timeout: 5000 })
-
-  // Verify results contain search term
-  const firstResult = results.first()
-  await expect(firstResult).toContainText('election', { ignoreCase: true })
-
-  // Filter by status
-  await page.click('button:has-text("Active")')
-
-  // Verify filtered results
-  await expect(results).toHaveCount(3)
-})
-
-test('user can create a new market', async ({ page }) => {
-  // Login first
-  await page.goto('/creator-dashboard')
-
-  // Fill market creation form
-  await page.fill('input[name="name"]', 'Test Market')
-  await page.fill('textarea[name="description"]', 'Test description')
-  await page.fill('input[name="endDate"]', '2025-12-31')
-
-  // Submit form
-  await page.click('button[type="submit"]')
-
-  // Verify success message
-  await expect(page.locator('text=Market created successfully')).toBeVisible()
-
-  // Verify redirect to market page
-  await expect(page).toHaveURL(/\/markets\/test-market/)
-})
+        data = response.json()
+        assert data["data"]["name"] == "Test Market"
 ```
 
 ## Test File Organization
 
 ```
 src/
-├── components/
-│   ├── Button/
-│   │   ├── Button.tsx
-│   │   ├── Button.test.tsx          # Unit tests
-│   │   └── Button.stories.tsx       # Storybook
-│   └── MarketCard/
-│       ├── MarketCard.tsx
-│       └── MarketCard.test.tsx
-├── app/
+├── my_project/
+│   ├── services/
+│   │   └── user_service.py
 │   └── api/
-│       └── markets/
-│           ├── route.ts
-│           └── route.test.ts         # Integration tests
+│       └── routes/
+│           └── markets.py
+tests/
+├── __init__.py
+├── conftest.py                    # Fixtures
+├── unit/
+│   ├── __init__.py
+│   └── test_user_service.py       # Unit tests
+├── integration/
+│   ├── __init__.py
+│   └── test_markets_api.py        # Integration tests
 └── e2e/
-    ├── markets.spec.ts               # E2E tests
-    ├── trading.spec.ts
-    └── auth.spec.ts
+    ├── __init__.py
+    └── test_market_flow.py        # E2E tests
+```
+
+## Fixtures (conftest.py)
+
+```python
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+
+from my_project.core.database import Base
+
+
+@pytest.fixture
+def db_session() -> Session:
+    """Create a database session for testing."""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        yield session
+
+
+@pytest.fixture
+def user_service(db_session: Session) -> UserService:
+    """Create UserService with test database."""
+    return UserService(db_session)
+
+
+@pytest.fixture
+async def authenticated_client() -> AsyncClient:
+    """Create authenticated test client."""
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        # Add auth token
+        client.headers["Authorization"] = f"Bearer {test_token}"
+        yield client
 ```
 
 ## Mocking External Services
 
-### Supabase Mock
-```typescript
-jest.mock('@/lib/supabase', () => ({
-  supabase: {
-    from: jest.fn(() => ({
-      select: jest.fn(() => ({
-        eq: jest.fn(() => Promise.resolve({
-          data: [{ id: 1, name: 'Test Market' }],
-          error: null
-        }))
-      }))
-    }))
-  }
-}))
+### Database Mock
+```python
+from unittest.mock import AsyncMock, patch
+
+
+@patch("my_project.repositories.market_repository.Session")
+async def test_with_mocked_db(mock_session: AsyncMock) -> None:
+    mock_session.query.return_value.filter.return_value.first.return_value = Market(
+        id="1", name="Test Market"
+    )
+
+    result = await get_market("1")
+    assert result.name == "Test Market"
 ```
 
 ### Redis Mock
-```typescript
-jest.mock('@/lib/redis', () => ({
-  searchMarketsByVector: jest.fn(() => Promise.resolve([
-    { slug: 'test-market', similarity_score: 0.95 }
-  ])),
-  checkRedisHealth: jest.fn(() => Promise.resolve({ connected: true }))
-}))
+```python
+@patch("my_project.services.cache.redis_client")
+async def test_with_mocked_redis(mock_redis: AsyncMock) -> None:
+    mock_redis.get.return_value = '{"id": "1", "name": "Cached Market"}'
+
+    result = await get_cached_market("1")
+    assert result["name"] == "Cached Market"
 ```
 
-### OpenAI Mock
-```typescript
-jest.mock('@/lib/openai', () => ({
-  generateEmbedding: jest.fn(() => Promise.resolve(
-    new Array(1536).fill(0.1) // Mock 1536-dim embedding
-  ))
-}))
+### External API Mock
+```python
+@patch("my_project.services.openai_service.client")
+async def test_with_mocked_openai(mock_client: AsyncMock) -> None:
+    mock_client.embeddings.create.return_value = MagicMock(
+        data=[MagicMock(embedding=[0.1] * 1536)]
+    )
+
+    result = await generate_embedding("test query")
+    assert len(result) == 1536
 ```
 
-## Test Coverage Verification
+## pytest Configuration
 
-### Run Coverage Report
-```bash
-npm run test:coverage
-```
+```toml
+# pyproject.toml
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = ["-ra", "-q", "--strict-markers", "-vv"]
+markers = [
+    "slow: marks tests as slow",
+    "integration: marks tests as integration tests",
+    "e2e: marks tests as end-to-end tests",
+]
+asyncio_mode = "auto"
 
-### Coverage Thresholds
-```json
-{
-  "jest": {
-    "coverageThresholds": {
-      "global": {
-        "branches": 80,
-        "functions": 80,
-        "lines": 80,
-        "statements": 80
-      }
-    }
-  }
-}
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
 ```
 
 ## Common Testing Mistakes to Avoid
 
 ### ❌ WRONG: Testing Implementation Details
-```typescript
-// Don't test internal state
-expect(component.state.count).toBe(5)
+```python
+# Don't test internal state
+assert service._internal_cache["key"] == value
 ```
 
-### ✅ CORRECT: Test User-Visible Behavior
-```typescript
-// Test what users see
-expect(screen.getByText('Count: 5')).toBeInTheDocument()
-```
-
-### ❌ WRONG: Brittle Selectors
-```typescript
-// Breaks easily
-await page.click('.css-class-xyz')
-```
-
-### ✅ CORRECT: Semantic Selectors
-```typescript
-// Resilient to changes
-await page.click('button:has-text("Submit")')
-await page.click('[data-testid="submit-button"]')
+### ✅ CORRECT: Test Observable Behavior
+```python
+# Test what users/callers observe
+result = service.get_value("key")
+assert result == expected_value
 ```
 
 ### ❌ WRONG: No Test Isolation
-```typescript
-// Tests depend on each other
-test('creates user', () => { /* ... */ })
-test('updates same user', () => { /* depends on previous test */ })
+```python
+# Tests depend on each other
+def test_creates_user():
+    ...
+
+def test_updates_same_user():
+    # depends on previous test
+    ...
 ```
 
 ### ✅ CORRECT: Independent Tests
-```typescript
-// Each test sets up its own data
-test('creates user', () => {
-  const user = createTestUser()
-  // Test logic
-})
+```python
+# Each test sets up its own data
+def test_creates_user(user_factory):
+    user = user_factory()
+    ...
 
-test('updates user', () => {
-  const user = createTestUser()
-  // Update logic
-})
+def test_updates_user(user_factory):
+    user = user_factory()
+    ...
 ```
 
-## Continuous Testing
+## CLI Commands
 
-### Watch Mode During Development
 ```bash
-npm test -- --watch
-# Tests run automatically on file changes
-```
+# Run all tests
+uv run pytest
 
-### Pre-Commit Hook
-```bash
-# Runs before every commit
-npm test && npm run lint
-```
+# Run with coverage
+uv run pytest --cov=src --cov-report=html
 
-### CI/CD Integration
-```yaml
-# GitHub Actions
-- name: Run Tests
-  run: npm test -- --coverage
-- name: Upload Coverage
-  uses: codecov/codecov-action@v3
+# Run specific test file
+uv run pytest tests/unit/test_user_service.py
+
+# Run specific test
+uv run pytest tests/unit/test_user_service.py::TestUserService::test_creates_user
+
+# Run with markers
+uv run pytest -m "not slow"
+uv run pytest -m integration
+uv run pytest -m e2e
+
+# Watch mode (with pytest-watch)
+uv run ptw
 ```
 
 ## Best Practices
@@ -389,7 +414,7 @@ npm test && npm run lint
 3. **Descriptive Test Names** - Explain what's tested
 4. **Arrange-Act-Assert** - Clear test structure
 5. **Mock External Dependencies** - Isolate unit tests
-6. **Test Edge Cases** - Null, undefined, empty, large
+6. **Test Edge Cases** - None, empty, large values
 7. **Test Error Paths** - Not just happy paths
 8. **Keep Tests Fast** - Unit tests < 50ms each
 9. **Clean Up After Tests** - No side effects
