@@ -506,7 +506,53 @@ This gives you instant access to all commands, agents, skills, and hooks.
 
 ---
 
-### 🔧 Option 2: Manual Installation
+### Option 2: Quick Setup Script
+
+Run the automated setup script to symlink all configs and merge JSON settings:
+
+```bash
+# Clone the repo
+git clone https://github.com/affaan-m/everything-claude-code.git
+cd everything-claude-code
+
+# Run the setup script
+./link_all.sh
+```
+
+**What `link_all.sh` does:**
+
+1. **Symlinks directories** to `~/.claude/`:
+   - `agents/` - Specialized subagents
+   - `commands/` - Slash commands
+   - `contexts/` - Dynamic context injection
+   - `plugins/` - Plugin configs
+   - `rules/` - Always-follow guidelines
+   - `skills/` - Workflow definitions
+
+2. **Merges hooks** from `hooks/hooks.json` into `~/.claude/settings.json`
+   - Deep merges with existing settings
+   - Creates backup at `settings.json.bak`
+
+3. **Merges MCP servers** from `mcp-configs/mcp-servers.json` into `~/.claude.json`
+   - Deep merges with existing MCP configs
+   - Creates backup at `~/.claude.json.bak`
+
+4. **Auto-fills API keys:**
+   - GitHub token: Auto-detected from `gh auth token` if gh CLI is authenticated
+   - Firecrawl: Opens browser and prompts for key input
+
+**Requirements:**
+- `jq` - Install with `brew install jq`
+- `gh` (optional) - For GitHub token auto-fill
+
+**Safety:**
+- All existing configs are backed up before modification
+- Uses temp files for JSON operations (restores on failure)
+- Symlinks allow updates by pulling the repo
+
+---
+
+### Option 3: Manual Installation
 
 If you prefer manual control over what's installed:
 
