@@ -1,0 +1,19 @@
+[project]
+name = "everything-claude-code"
+version = "0.1.0"
+description = "Battle-tested Claude Code configs — agents, hooks, MCP servers, rules, and skills"
+requires-python = ">=3.10"
+dependencies = ["click>=8.0"]
+license = "MIT"
+
+[project.scripts]
+everything-claude-code = "everything_claude_code.cli:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

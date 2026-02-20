@@ -48,3 +48,10 @@ examples/sessions/*.tmp
 
 # Local drafts
 marketing/
+
+# Local cache and backups
+.claude/backup/
+_research_cache/
+
+# Installed plugin marketplaces (reinstallable from known_marketplaces.json)
+plugins/marketplaces/
