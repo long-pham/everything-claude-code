@@ -1,0 +1,14 @@
+# Personal config — always keep local version on rebase/merge
+.claude/settings.local.json      merge=ours
+plugins/installed_plugins.json   merge=ours
+mcp-configs/mcp-servers.json     merge=ours
+link_all.sh                      merge=ours
+
+# Shared files where your customizations should always win
+README.md                        merge=ours
+rules/common/security.md         merge=ours
+rules/common/testing.md          merge=ours
+skills/backend-patterns/SKILL.md merge=ours
+skills/coding-standards/SKILL.md merge=ours
+skills/security-review/SKILL.md  merge=ours
+skills/tdd-workflow/SKILL.md     merge=ours
