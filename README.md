@@ -6,6 +6,7 @@
 [![Forks](https://img.shields.io/github/forks/affaan-m/everything-claude-code?style=flat)](https://github.com/affaan-m/everything-claude-code/network/members)
 [![Contributors](https://img.shields.io/github/contributors/affaan-m/everything-claude-code?style=flat)](https://github.com/affaan-m/everything-claude-code/graphs/contributors)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Python](https://img.shields.io/badge/-Python_3.10+-3776AB?logo=python&logoColor=white)
 ![Shell](https://img.shields.io/badge/-Shell-4EAA25?logo=gnu-bash&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/-TypeScript-3178C6?logo=typescript&logoColor=white)
 ![Python](https://img.shields.io/badge/-Python-3776AB?logo=python&logoColor=white)
@@ -506,9 +507,98 @@ This gives you instant access to all commands, agents, skills, and hooks.
 
 ---
 
-### Option 2: Quick Setup Script
+### Option 2: Python CLI (Recommended for developers)
 
-Run the automated setup script to symlink all configs and merge JSON settings:
+A Python CLI tool (`everything-claude-code`) ships in `src/` and replaces the shell script with a cross-platform, testable alternative.
+
+**Install with uv:**
+
+```bash
+# Clone the repo
+git clone https://github.com/affaan-m/everything-claude-code.git
+cd everything-claude-code
+
+# Install the package
+uv sync
+
+# Run the link command
+uv run everything-claude-code link
+```
+
+**Or install globally with pip:**
+
+```bash
+pip install -e .
+everything-claude-code link
+```
+
+**What `everything-claude-code link` does:**
+
+1. **Symlinks directories** to `~/.claude/`:
+   - `agents/` — Specialized subagents
+   - `commands/` — Slash commands
+   - `contexts/` — Dynamic context injection
+   - `plugins/` — Plugin configs
+   - `rules/` — Always-follow guidelines
+   - `skills/` — Workflow definitions
+
+2. **Merges hooks** from `hooks/hooks.json` into `~/.claude/settings.json`
+   - Deep merges with existing settings
+   - Resolves `${CLAUDE_PLUGIN_ROOT}` placeholders to the repo path
+   - Creates backup at `settings.json.bak`
+
+3. **Merges MCP servers** from `mcp-configs/mcp-servers.json` into `~/.claude.json`
+   - Deep merges `mcpServers` only, preserving other top-level config
+   - Creates backup at `~/.claude.json.bak`
+
+4. **Auto-fills API keys:**
+   - GitHub token: Auto-detected from `gh auth token` if gh CLI is authenticated
+   - Filesystem MCP path: Restores from backup or prompts interactively
+
+**CLI options:**
+
+```
+Usage: everything-claude-code link [OPTIONS]
+
+  Link configs into ~/.claude and merge hooks/MCP servers.
+
+Options:
+  --src   PATH   Source config directory (auto-detected if omitted)
+  --dest  PATH   Destination directory (default: ~/.claude)
+  --claude-json  PATH  Path to claude.json (default: ~/.claude.json)
+  --fs-path TEXT Filesystem MCP path (skips interactive prompt)
+  --no-prompt    Non-interactive mode, skip all prompts
+  --help         Show this message and exit.
+```
+
+**Examples:**
+
+```bash
+# Interactive setup (default)
+everything-claude-code link
+
+# Non-interactive CI/CD setup
+everything-claude-code link --fs-path ~/code --no-prompt
+
+# Custom destinations
+everything-claude-code link --dest /custom/claude --claude-json /custom/claude.json
+```
+
+**Requirements:**
+- Python 3.10+
+- `uv` (recommended) or pip
+- `gh` CLI (optional) — for GitHub token auto-fill
+
+**Safety:**
+- All existing configs are backed up before modification
+- Existing symlinks are cleanly replaced; real directories are renamed to `.bak`
+- Non-destructive deep merge preserves your existing settings
+
+---
+
+### Option 3: Quick Setup Script (Shell)
+
+Run the legacy shell script to symlink all configs and merge JSON settings:
 
 ```bash
 # Clone the repo
@@ -519,40 +609,13 @@ cd everything-claude-code
 ./link_all.sh
 ```
 
-**What `link_all.sh` does:**
-
-1. **Symlinks directories** to `~/.claude/`:
-   - `agents/` - Specialized subagents
-   - `commands/` - Slash commands
-   - `contexts/` - Dynamic context injection
-   - `plugins/` - Plugin configs
-   - `rules/` - Always-follow guidelines
-   - `skills/` - Workflow definitions
-
-2. **Merges hooks** from `hooks/hooks.json` into `~/.claude/settings.json`
-   - Deep merges with existing settings
-   - Creates backup at `settings.json.bak`
-
-3. **Merges MCP servers** from `mcp-configs/mcp-servers.json` into `~/.claude.json`
-   - Deep merges with existing MCP configs
-   - Creates backup at `~/.claude.json.bak`
-
-4. **Auto-fills API keys:**
-   - GitHub token: Auto-detected from `gh auth token` if gh CLI is authenticated
-   - Firecrawl: Opens browser and prompts for key input
-
 **Requirements:**
-- `jq` - Install with `brew install jq`
-- `gh` (optional) - For GitHub token auto-fill
-
-**Safety:**
-- All existing configs are backed up before modification
-- Uses temp files for JSON operations (restores on failure)
-- Symlinks allow updates by pulling the repo
+- `jq` — Install with `brew install jq`
+- `gh` (optional) — For GitHub token auto-fill
 
 ---
 
-### Option 3: Manual Installation
+### Option 4: Manual Installation
 
 If you prefer manual control over what's installed:
 
@@ -766,10 +829,27 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). The short version:
 
 ## 🧪 Running Tests
 
-The plugin includes a comprehensive test suite:
+### Python CLI tests
+
+The Python CLI includes a pytest suite covering all core functions and CLI integration:
 
 ```bash
-# Run all tests
+# Run all Python tests
+uv run pytest
+
+# Run with coverage
+uv run pytest --cov=src
+
+# Run a specific test class
+uv run pytest tests/test_cli.py::TestLinkCommand -v
+```
+
+Test coverage includes: deep merge logic, JSON I/O, symlink creation, hooks merging, MCP server merging, GitHub token auto-fill, filesystem path handling, and the full `link` command flow.
+
+### Node.js tests
+
+```bash
+# Run all Node.js tests
 node tests/run-all.js
 
 # Run individual test files

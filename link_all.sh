@@ -54,13 +54,17 @@ if [[ -f "$HOOKS_SRC" ]]; then
     echo ""
     echo "=== Merging hooks into settings.json ==="
 
+    # Replace ${CLAUDE_PLUGIN_ROOT} with actual repo path in hooks
+    HOOKS_RESOLVED=$(mktemp)
+    sed "s|\${CLAUDE_PLUGIN_ROOT}|${SRC}|g" "$HOOKS_SRC" > "$HOOKS_RESOLVED"
+
     # Always backup first before any jq operations
     if [[ -f "$SETTINGS_DEST" ]]; then
         cp "$SETTINGS_DEST" "${SETTINGS_DEST}.bak"
         echo "Backed up: $SETTINGS_DEST -> ${SETTINGS_DEST}.bak"
 
         # Deep merge hooks from source into destination using temp file
-        if jq -s '.[0] * .[1]' "$SETTINGS_DEST.bak" "$HOOKS_SRC" > "${SETTINGS_DEST}.tmp"; then
+        if jq -s '.[0] * .[1]' "$SETTINGS_DEST.bak" "$HOOKS_RESOLVED" > "${SETTINGS_DEST}.tmp"; then
             mv "${SETTINGS_DEST}.tmp" "$SETTINGS_DEST"
             echo "Merged hooks into: $SETTINGS_DEST"
         else
@@ -69,10 +73,11 @@ if [[ -f "$HOOKS_SRC" ]]; then
             rm -f "${SETTINGS_DEST}.tmp"
         fi
     else
-        # No existing settings, just copy hooks.json
-        cp "$HOOKS_SRC" "$SETTINGS_DEST"
+        # No existing settings, just copy resolved hooks
+        cp "$HOOKS_RESOLVED" "$SETTINGS_DEST"
         echo "Created: $SETTINGS_DEST"
     fi
+    rm -f "$HOOKS_RESOLVED"
 fi
 
 # Merge mcp-servers.json into ~/.claude.json
@@ -120,20 +125,31 @@ if [[ -f "$MCP_SRC" ]]; then
         fi
     fi
 
-    # Prompt for Firecrawl API key if placeholder exists
-    if grep -q "YOUR_FIRECRAWL_KEY_HERE" "$CLAUDE_JSON"; then
+    # Preserve existing filesystem path if it's valid (merge may have overwritten it with placeholder)
+    EXISTING_FS_PATH=$(jq -r '.mcpServers.filesystem.args[-1] // ""' "${CLAUDE_JSON}.bak" 2>/dev/null)
+    if [[ -n "$EXISTING_FS_PATH" && "$EXISTING_FS_PATH" != "YOUR_FILESYSTEM_PATH_HERE" && -d "$EXISTING_FS_PATH" ]]; then
+        # Restore the working path that the merge overwrote
+        jq --arg p "$EXISTING_FS_PATH" '.mcpServers.filesystem.args[-1] = $p' "$CLAUDE_JSON" > "${CLAUDE_JSON}.tmp" \
+            && mv "${CLAUDE_JSON}.tmp" "$CLAUDE_JSON"
+        echo "Filesystem MCP already configured: $EXISTING_FS_PATH"
+    else
+        # Need to ask — path is placeholder, missing, or invalid
+        [[ -n "$EXISTING_FS_PATH" && "$EXISTING_FS_PATH" != "YOUR_FILESYSTEM_PATH_HERE" && ! -d "$EXISTING_FS_PATH" ]] \
+            && echo "Warning: Previously configured path no longer exists: $EXISTING_FS_PATH"
         echo ""
-        echo "=== Firecrawl API Key Setup ==="
-        echo "Opening https://firecrawl.dev to get your API key..."
-        open "https://www.firecrawl.dev/app/api-keys" 2>/dev/null || xdg-open "https://www.firecrawl.dev/app/api-keys" 2>/dev/null || true
-        echo ""
-        read -p "Paste your Firecrawl API key (or press Enter to skip): " FIRECRAWL_KEY
-        if [[ -n "$FIRECRAWL_KEY" ]]; then
-            sed -i.tmp "s/YOUR_FIRECRAWL_KEY_HERE/$FIRECRAWL_KEY/" "$CLAUDE_JSON"
-            rm -f "${CLAUDE_JSON}.tmp"
-            echo "Saved Firecrawl API key"
+        echo "=== Filesystem MCP Setup ==="
+        read -p "Enter the directory path for filesystem MCP (or press Enter to skip): " FS_PATH
+        if [[ -n "$FS_PATH" ]]; then
+            FS_PATH="${FS_PATH/#\~/$HOME}"
+            if [[ -d "$FS_PATH" ]]; then
+                jq --arg p "$FS_PATH" '.mcpServers.filesystem.args[-1] = $p' "$CLAUDE_JSON" > "${CLAUDE_JSON}.tmp" \
+                    && mv "${CLAUDE_JSON}.tmp" "$CLAUDE_JSON"
+                echo "Set filesystem path to: $FS_PATH"
+            else
+                echo "Warning: Directory not found: $FS_PATH (skipping)"
+            fi
         else
-            echo "Skipped - you can manually add it later to ~/.claude.json"
+            echo "Skipped - you can manually set it later in ~/.claude.json"
         fi
     fi
 fi

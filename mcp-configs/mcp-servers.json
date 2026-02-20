@@ -8,19 +8,19 @@
       },
       "description": "GitHub operations - PRs, issues, repos"
     },
-    "firecrawl": {
-      "command": "npx",
-      "args": ["-y", "firecrawl-mcp"],
-      "env": {
-        "FIRECRAWL_API_KEY": "YOUR_FIRECRAWL_KEY_HERE"
-      },
-      "description": "Web scraping and crawling"
+    "crawl4ai": {
+      "type": "sse",
+      "url": "http://localhost:11235/mcp/sse"
     },
-    "supabase": {
-      "command": "npx",
-      "args": ["-y", "@supabase/mcp-server-supabase@latest", "--project-ref=YOUR_PROJECT_REF"],
-      "description": "Supabase database operations"
+    "searxng": {
+      "type": "http",
+      "url": "http://localhost:38081/mcp"
     },
+    "mcphub": {
+      "type": "sse",
+      "url": "http://localhost:33000/sse"
+    },
+
     "memory": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-memory"],
@@ -68,7 +68,7 @@
     },
     "context7": {
       "command": "npx",
-      "args": ["-y", "@context7/mcp-server"],
+      "args": ["-y", "--registry", "https://registry.npmjs.org", "@upstash/context7-mcp"],
       "description": "Live documentation lookup"
     },
     "magic": {
@@ -78,7 +78,7 @@
     },
     "filesystem": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/your/projects"],
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "YOUR_FILESYSTEM_PATH_HERE"],
       "description": "Filesystem operations (set your path)"
     }
   },

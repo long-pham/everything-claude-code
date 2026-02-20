@@ -1,4 +1,95 @@
 {
   "version": 2,
-  "plugins": {}
+  "plugins": {
+    "agent-skills@ai-for-devs-community": [
+      {
+        "scope": "user",
+        "installPath": "/Users/lpham/.claude/plugins/cache/ai-for-devs-community/agent-skills/1.1.0",
+        "version": "1.1.0",
+        "installedAt": "2026-01-24T06:28:43.424Z",
+        "lastUpdated": "2026-01-24T06:28:43.424Z",
+        "gitCommitSha": "0ae87568a8ae6f02960dbd2cddb495ea29294878"
+      }
+    ],
+    "rio@ai-for-devs-community": [
+      {
+        "scope": "user",
+        "installPath": "/Users/lpham/.claude/plugins/cache/ai-for-devs-community/rio/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-01-24T06:39:01.277Z",
+        "lastUpdated": "2026-01-24T06:39:01.277Z",
+        "gitCommitSha": "0c7d6884da6aec51f4cb343383fdd6906469a34a"
+      }
+    ],
+    "radar@ai-for-devs-community": [
+      {
+        "scope": "user",
+        "installPath": "/Users/lpham/.claude/plugins/cache/ai-for-devs-community/radar/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-01-24T06:39:01.277Z",
+        "lastUpdated": "2026-01-24T06:39:01.277Z",
+        "gitCommitSha": "0c7d6884da6aec51f4cb343383fdd6906469a34a"
+      }
+    ],
+    "python-developer@ai-for-devs-community": [
+      {
+        "scope": "user",
+        "installPath": "/Users/lpham/.claude/plugins/cache/ai-for-devs-community/python-developer/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-01-24T06:39:01.277Z",
+        "lastUpdated": "2026-01-24T06:39:01.277Z",
+        "gitCommitSha": "0c7d6884da6aec51f4cb343383fdd6906469a34a"
+      }
+    ],
+    "agent-builder@ai-for-devs-community": [
+      {
+        "scope": "user",
+        "installPath": "/Users/lpham/.claude/plugins/cache/ai-for-devs-community/agent-builder/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-01-24T06:39:01.277Z",
+        "lastUpdated": "2026-01-24T06:39:01.277Z",
+        "gitCommitSha": "0c7d6884da6aec51f4cb343383fdd6906469a34a"
+      }
+    ],
+    "plugin-builder@ai-for-devs-community": [
+      {
+        "scope": "user",
+        "installPath": "/Users/lpham/.claude/plugins/cache/ai-for-devs-community/plugin-builder/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-01-24T06:39:01.277Z",
+        "lastUpdated": "2026-01-24T06:39:01.277Z",
+        "gitCommitSha": "0c7d6884da6aec51f4cb343383fdd6906469a34a"
+      }
+    ],
+    "marketplace-builder@ai-for-devs-community": [
+      {
+        "scope": "user",
+        "installPath": "/Users/lpham/.claude/plugins/cache/ai-for-devs-community/marketplace-builder/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-01-24T06:39:01.277Z",
+        "lastUpdated": "2026-01-24T06:39:01.277Z",
+        "gitCommitSha": "0c7d6884da6aec51f4cb343383fdd6906469a34a"
+      }
+    ],
+    "mermaid@ai-for-devs-community": [
+      {
+        "scope": "user",
+        "installPath": "/Users/lpham/.claude/plugins/cache/ai-for-devs-community/mermaid/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-01-24T06:39:01.277Z",
+        "lastUpdated": "2026-01-24T06:39:01.277Z",
+        "gitCommitSha": "0c7d6884da6aec51f4cb343383fdd6906469a34a"
+      }
+    ],
+    "keynote@ai-for-devs-community": [
+      {
+        "scope": "user",
+        "installPath": "/Users/lpham/.claude/plugins/cache/ai-for-devs-community/keynote/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-01-29T20:30:00.000Z",
+        "lastUpdated": "2026-01-29T20:30:00.000Z",
+        "gitCommitSha": "manual-install"
+      }
+    ]
+  }
 }

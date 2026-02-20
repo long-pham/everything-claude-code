@@ -35,6 +35,14 @@ tasks/
 personal/
 private/
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+dist/
+*.egg-info/
+
 # Session templates (not committed)
 examples/sessions/*.tmp
 
