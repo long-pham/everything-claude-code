@@ -1,3 +1,7 @@
+---
+description: Execute a multi-model implementation plan while preserving Claude as the only filesystem writer.
+---
+
 # Execute - Multi-Model Collaborative Execution
 
 Multi-model collaborative execution - Get prototype from plan → Claude refactors and implements → Multi-model audit and delivery.
@@ -136,7 +140,7 @@ TaskOutput({ task_id: "<task_id>", block: true, timeout: 600000 })
 
 `[Mode: Retrieval]`
 
-**Must use MCP tool for quick context retrieval, do NOT manually read files one by one**
+**If ace-tool MCP is available**, use it for quick context retrieval:
 
 Based on "Key Files" list in plan, call `mcp__ace-tool__search_context`:
 
@@ -151,7 +155,12 @@ mcp__ace-tool__search_context({
 - Extract target paths from plan's "Key Files" table
 - Build semantic query covering: entry files, dependency modules, related type definitions
 - If results insufficient, add 1-2 recursive retrievals
-- **NEVER** use Bash + find/ls to manually explore project structure
+
+**If ace-tool MCP is NOT available**, use Claude Code built-in tools as fallback:
+1. **Glob**: Find target files from plan's "Key Files" table (e.g., `Glob("src/components/**/*.tsx")`)
+2. **Grep**: Search for key symbols, function names, type definitions across the codebase
+3. **Read**: Read the discovered files to gather complete context
+4. **Task (Explore agent)**: For broader exploration, use `Task` with `subagent_type: "Explore"`
 
 **After Retrieval**:
 - Organize retrieved code snippets

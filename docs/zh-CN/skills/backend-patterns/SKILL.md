@@ -1,18 +1,29 @@
 ---
 name: backend-patterns
-description: 后端架构模式、API设计、数据库优化以及针对Node.js、Express和Next.js API路由的服务器端最佳实践。
+description: 后端架构模式、API设计、数据库优化以及适用于Node.js、Express和Next.js API路由的服务器端最佳实践。
+origin: ECC
 ---
 
 # 后端开发模式
 
 用于可扩展服务器端应用程序的后端架构模式和最佳实践。
 
+## 何时激活
+
+* 设计 REST 或 GraphQL API 端点时
+* 实现仓储层、服务层或控制器层时
+* 优化数据库查询（N+1问题、索引、连接池）时
+* 添加缓存（Redis、内存缓存、HTTP 缓存头）时
+* 设置后台作业或异步处理时
+* 为 API 构建错误处理和验证结构时
+* 构建中间件（认证、日志记录、速率限制）时
+
 ## API 设计模式
 
 ### RESTful API 结构
 
 ```typescript
-// ✅ Resource-based URLs
+// PASS: Resource-based URLs
 GET    /api/markets                 # List resources
 GET    /api/markets/:id             # Get single resource
 POST   /api/markets                 # Create resource
@@ -20,7 +31,7 @@ PUT    /api/markets/:id             # Replace resource
 PATCH  /api/markets/:id             # Update resource
 DELETE /api/markets/:id             # Delete resource
 
-// ✅ Query parameters for filtering, sorting, pagination
+// PASS: Query parameters for filtering, sorting, pagination
 GET /api/markets?status=active&sort=volume&limit=20&offset=0
 ```
 
@@ -120,7 +131,7 @@ export default withAuth(async (req, res) => {
 ### 查询优化
 
 ```typescript
-// ✅ GOOD: Select only needed columns
+// PASS: GOOD: Select only needed columns
 const { data } = await supabase
   .from('markets')
   .select('id, name, status, volume')
@@ -128,7 +139,7 @@ const { data } = await supabase
   .order('volume', { ascending: false })
   .limit(10)
 
-// ❌ BAD: Select everything
+// FAIL: BAD: Select everything
 const { data } = await supabase
   .from('markets')
   .select('*')
@@ -137,13 +148,13 @@ const { data } = await supabase
 ### N+1 查询预防
 
 ```typescript
-// ❌ BAD: N+1 query problem
+// FAIL: BAD: N+1 query problem
 const markets = await getMarkets()
 for (const market of markets) {
   market.creator = await getUser(market.creator_id)  // N queries
 }
 
-// ✅ GOOD: Batch fetch
+// PASS: GOOD: Batch fetch
 const markets = await getMarkets()
 const creatorIds = markets.map(m => m.creator_id)
 const creators = await getUsers(creatorIds)  // 1 query

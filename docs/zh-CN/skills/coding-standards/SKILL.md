@@ -1,11 +1,21 @@
 ---
 name: coding-standards
 description: 适用于TypeScript、JavaScript、React和Node.js开发的通用编码标准、最佳实践和模式。
+origin: ECC
 ---
 
 # 编码标准与最佳实践
 
 适用于所有项目的通用编码标准。
+
+## 何时激活
+
+* 开始新项目或新模块时
+* 审查代码质量和可维护性时
+* 重构现有代码以遵循约定时
+* 强制执行命名、格式或结构一致性时
+* 设置代码检查、格式化或类型检查规则时
+* 引导新贡献者熟悉编码规范时
 
 ## 代码质量原则
 
@@ -42,12 +52,12 @@ description: 适用于TypeScript、JavaScript、React和Node.js开发的通用�
 ### 变量命名
 
 ```typescript
-// ✅ GOOD: Descriptive names
+// PASS: GOOD: Descriptive names
 const marketSearchQuery = 'election'
 const isUserAuthenticated = true
 const totalRevenue = 1000
 
-// ❌ BAD: Unclear names
+// FAIL: BAD: Unclear names
 const q = 'election'
 const flag = true
 const x = 1000
@@ -56,12 +66,12 @@ const x = 1000
 ### 函数命名
 
 ```typescript
-// ✅ GOOD: Verb-noun pattern
+// PASS: GOOD: Verb-noun pattern
 async function fetchMarketData(marketId: string) { }
 function calculateSimilarity(a: number[], b: number[]) { }
 function isValidEmail(email: string): boolean { }
 
-// ❌ BAD: Unclear or noun-only
+// FAIL: BAD: Unclear or noun-only
 async function market(id: string) { }
 function similarity(a, b) { }
 function email(e) { }
@@ -70,7 +80,7 @@ function email(e) { }
 ### 不可变性模式 (关键)
 
 ```typescript
-// ✅ ALWAYS use spread operator
+// PASS: ALWAYS use spread operator
 const updatedUser = {
   ...user,
   name: 'New Name'
@@ -78,7 +88,7 @@ const updatedUser = {
 
 const updatedArray = [...items, newItem]
 
-// ❌ NEVER mutate directly
+// FAIL: NEVER mutate directly
 user.name = 'New Name'  // BAD
 items.push(newItem)     // BAD
 ```
@@ -86,7 +96,7 @@ items.push(newItem)     // BAD
 ### 错误处理
 
 ```typescript
-// ✅ GOOD: Comprehensive error handling
+// PASS: GOOD: Comprehensive error handling
 async function fetchData(url: string) {
   try {
     const response = await fetch(url)
@@ -102,7 +112,7 @@ async function fetchData(url: string) {
   }
 }
 
-// ❌ BAD: No error handling
+// FAIL: BAD: No error handling
 async function fetchData(url) {
   const response = await fetch(url)
   return response.json()
@@ -112,14 +122,14 @@ async function fetchData(url) {
 ### Async/Await 最佳实践
 
 ```typescript
-// ✅ GOOD: Parallel execution when possible
+// PASS: GOOD: Parallel execution when possible
 const [users, markets, stats] = await Promise.all([
   fetchUsers(),
   fetchMarkets(),
   fetchStats()
 ])
 
-// ❌ BAD: Sequential when unnecessary
+// FAIL: BAD: Sequential when unnecessary
 const users = await fetchUsers()
 const markets = await fetchMarkets()
 const stats = await fetchStats()
@@ -128,7 +138,7 @@ const stats = await fetchStats()
 ### 类型安全
 
 ```typescript
-// ✅ GOOD: Proper types
+// PASS: GOOD: Proper types
 interface Market {
   id: string
   name: string
@@ -140,7 +150,7 @@ function getMarket(id: string): Promise<Market> {
   // Implementation
 }
 
-// ❌ BAD: Using 'any'
+// FAIL: BAD: Using 'any'
 function getMarket(id: any): Promise<any> {
   // Implementation
 }
@@ -151,7 +161,7 @@ function getMarket(id: any): Promise<any> {
 ### 组件结构
 
 ```typescript
-// ✅ GOOD: Functional component with types
+// PASS: GOOD: Functional component with types
 interface ButtonProps {
   children: React.ReactNode
   onClick: () => void
@@ -176,7 +186,7 @@ export function Button({
   )
 }
 
-// ❌ BAD: No types, unclear structure
+// FAIL: BAD: No types, unclear structure
 export function Button(props) {
   return <button onClick={props.onClick}>{props.children}</button>
 }
@@ -185,7 +195,7 @@ export function Button(props) {
 ### 自定义 Hooks
 
 ```typescript
-// ✅ GOOD: Reusable custom hook
+// PASS: GOOD: Reusable custom hook
 export function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value)
 
@@ -207,25 +217,25 @@ const debouncedQuery = useDebounce(searchQuery, 500)
 ### 状态管理
 
 ```typescript
-// ✅ GOOD: Proper state updates
+// PASS: GOOD: Proper state updates
 const [count, setCount] = useState(0)
 
 // Functional update for state based on previous state
 setCount(prev => prev + 1)
 
-// ❌ BAD: Direct state reference
+// FAIL: BAD: Direct state reference
 setCount(count + 1)  // Can be stale in async scenarios
 ```
 
 ### 条件渲染
 
 ```typescript
-// ✅ GOOD: Clear conditional rendering
+// PASS: GOOD: Clear conditional rendering
 {isLoading && <Spinner />}
 {error && <ErrorMessage error={error} />}
 {data && <DataDisplay data={data} />}
 
-// ❌ BAD: Ternary hell
+// FAIL: BAD: Ternary hell
 {isLoading ? <Spinner /> : error ? <ErrorMessage error={error} /> : data ? <DataDisplay data={data} /> : null}
 ```
 
@@ -234,21 +244,21 @@ setCount(count + 1)  // Can be stale in async scenarios
 ### REST API 约定
 
 ```
-GET    /api/markets              # List all markets
-GET    /api/markets/:id          # Get specific market
-POST   /api/markets              # Create new market
-PUT    /api/markets/:id          # Update market (full)
-PATCH  /api/markets/:id          # Update market (partial)
-DELETE /api/markets/:id          # Delete market
+GET    /api/markets              # 列出所有市场
+GET    /api/markets/:id          # 获取特定市场
+POST   /api/markets              # 创建新市场
+PUT    /api/markets/:id          # 更新市场（完整）
+PATCH  /api/markets/:id          # 更新市场（部分）
+DELETE /api/markets/:id          # 删除市场
 
-# Query parameters for filtering
+# 用于筛选的查询参数
 GET /api/markets?status=active&limit=10&offset=0
 ```
 
 ### 响应格式
 
 ```typescript
-// ✅ GOOD: Consistent response structure
+// PASS: GOOD: Consistent response structure
 interface ApiResponse<T> {
   success: boolean
   data?: T
@@ -279,7 +289,7 @@ return NextResponse.json({
 ```typescript
 import { z } from 'zod'
 
-// ✅ GOOD: Schema validation
+// PASS: GOOD: Schema validation
 const CreateMarketSchema = z.object({
   name: z.string().min(1).max(200),
   description: z.string().min(1).max(2000),
@@ -331,10 +341,10 @@ src/
 ### 文件命名
 
 ```
-components/Button.tsx          # PascalCase for components
-hooks/useAuth.ts              # camelCase with 'use' prefix
-lib/formatDate.ts             # camelCase for utilities
-types/market.types.ts         # camelCase with .types suffix
+components/Button.tsx          # 组件使用帕斯卡命名法
+hooks/useAuth.ts              # 使用 'use' 前缀的驼峰命名法
+lib/formatDate.ts             # 工具函数使用驼峰命名法
+types/market.types.ts         # 使用 .types 后缀的驼峰命名法
 ```
 
 ## 注释与文档
@@ -342,14 +352,14 @@ types/market.types.ts         # camelCase with .types suffix
 ### 何时添加注释
 
 ```typescript
-// ✅ GOOD: Explain WHY, not WHAT
+// PASS: GOOD: Explain WHY, not WHAT
 // Use exponential backoff to avoid overwhelming the API during outages
 const delay = Math.min(1000 * Math.pow(2, retryCount), 30000)
 
 // Deliberately using mutation here for performance with large arrays
 items.push(newItem)
 
-// ❌ BAD: Stating the obvious
+// FAIL: BAD: Stating the obvious
 // Increment counter by 1
 count++
 
@@ -389,12 +399,12 @@ export async function searchMarkets(
 ```typescript
 import { useMemo, useCallback } from 'react'
 
-// ✅ GOOD: Memoize expensive computations
+// PASS: GOOD: Memoize expensive computations
 const sortedMarkets = useMemo(() => {
   return markets.sort((a, b) => b.volume - a.volume)
 }, [markets])
 
-// ✅ GOOD: Memoize callbacks
+// PASS: GOOD: Memoize callbacks
 const handleSearch = useCallback((query: string) => {
   setSearchQuery(query)
 }, [])
@@ -405,7 +415,7 @@ const handleSearch = useCallback((query: string) => {
 ```typescript
 import { lazy, Suspense } from 'react'
 
-// ✅ GOOD: Lazy load heavy components
+// PASS: GOOD: Lazy load heavy components
 const HeavyChart = lazy(() => import('./HeavyChart'))
 
 export function Dashboard() {
@@ -420,13 +430,13 @@ export function Dashboard() {
 ### 数据库查询
 
 ```typescript
-// ✅ GOOD: Select only needed columns
+// PASS: GOOD: Select only needed columns
 const { data } = await supabase
   .from('markets')
   .select('id, name, status')
   .limit(10)
 
-// ❌ BAD: Select everything
+// FAIL: BAD: Select everything
 const { data } = await supabase
   .from('markets')
   .select('*')
@@ -453,12 +463,12 @@ test('calculates similarity correctly', () => {
 ### 测试命名
 
 ```typescript
-// ✅ GOOD: Descriptive test names
+// PASS: GOOD: Descriptive test names
 test('returns empty array when no markets match query', () => { })
 test('throws error when OpenAI API key is missing', () => { })
 test('falls back to substring search when Redis unavailable', () => { })
 
-// ❌ BAD: Vague test names
+// FAIL: BAD: Vague test names
 test('works', () => { })
 test('test search', () => { })
 ```
@@ -470,12 +480,12 @@ test('test search', () => { })
 ### 1. 长函数
 
 ```typescript
-// ❌ BAD: Function > 50 lines
+// FAIL: BAD: Function > 50 lines
 function processMarketData() {
   // 100 lines of code
 }
 
-// ✅ GOOD: Split into smaller functions
+// PASS: GOOD: Split into smaller functions
 function processMarketData() {
   const validated = validateData()
   const transformed = transformData(validated)
@@ -486,7 +496,7 @@ function processMarketData() {
 ### 2. 深层嵌套
 
 ```typescript
-// ❌ BAD: 5+ levels of nesting
+// FAIL: BAD: 5+ levels of nesting
 if (user) {
   if (user.isAdmin) {
     if (market) {
@@ -499,7 +509,7 @@ if (user) {
   }
 }
 
-// ✅ GOOD: Early returns
+// PASS: GOOD: Early returns
 if (!user) return
 if (!user.isAdmin) return
 if (!market) return
@@ -512,11 +522,11 @@ if (!hasPermission) return
 ### 3. 魔法数字
 
 ```typescript
-// ❌ BAD: Unexplained numbers
+// FAIL: BAD: Unexplained numbers
 if (retryCount > 3) { }
 setTimeout(callback, 500)
 
-// ✅ GOOD: Named constants
+// PASS: GOOD: Named constants
 const MAX_RETRIES = 3
 const DEBOUNCE_DELAY_MS = 500
 

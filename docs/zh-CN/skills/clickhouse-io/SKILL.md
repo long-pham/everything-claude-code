@@ -1,11 +1,21 @@
 ---
 name: clickhouse-io
-description: ClickHouse数据库模式、查询优化、分析和数据工程最佳实践，适用于高性能分析工作负载。
+description: ClickHouse数据库模式、查询优化、分析以及高性能分析工作负载的数据工程最佳实践。
+origin: ECC
 ---
 
 # ClickHouse 分析模式
 
 用于高性能分析和数据工程的 ClickHouse 特定模式。
+
+## 何时激活
+
+* 设计 ClickHouse 表架构（MergeTree 引擎选择）
+* 编写分析查询（聚合、窗口函数、连接）
+* 优化查询性能（分区裁剪、投影、物化视图）
+* 摄取大量数据（批量插入、Kafka 集成）
+* 为分析目的从 PostgreSQL/MySQL 迁移到 ClickHouse
+* 实现实时仪表板或时间序列分析
 
 ## 概述
 
@@ -87,7 +97,7 @@ ORDER BY hour DESC;
 ### 高效过滤
 
 ```sql
--- ✅ GOOD: Use indexed columns first
+-- PASS: GOOD: Use indexed columns first
 SELECT *
 FROM markets_analytics
 WHERE date >= '2025-01-01'
@@ -96,7 +106,7 @@ WHERE date >= '2025-01-01'
 ORDER BY date DESC
 LIMIT 100;
 
--- ❌ BAD: Filter on non-indexed columns first
+-- FAIL: BAD: Filter on non-indexed columns first
 SELECT *
 FROM markets_analytics
 WHERE volume > 1000
@@ -107,7 +117,7 @@ WHERE volume > 1000
 ### 聚合
 
 ```sql
--- ✅ GOOD: Use ClickHouse-specific aggregation functions
+-- PASS: GOOD: Use ClickHouse-specific aggregation functions
 SELECT
     toStartOfDay(created_at) AS day,
     market_id,
@@ -120,7 +130,7 @@ WHERE created_at >= today() - INTERVAL 7 DAY
 GROUP BY day, market_id
 ORDER BY day DESC, total_volume DESC;
 
--- ✅ Use quantile for percentiles (more efficient than percentile)
+-- PASS: Use quantile for percentiles (more efficient than percentile)
 SELECT
     quantile(0.50)(trade_size) AS median,
     quantile(0.95)(trade_size) AS p95,
@@ -163,7 +173,7 @@ const clickhouse = new ClickHouse({
   }
 })
 
-// ✅ Batch insert (efficient)
+// PASS: Batch insert (efficient)
 async function bulkInsertTrades(trades: Trade[]) {
   const values = trades.map(trade => `(
     '${trade.id}',
@@ -179,7 +189,7 @@ async function bulkInsertTrades(trades: Trade[]) {
   `).toPromise()
 }
 
-// ❌ Individual inserts (slow)
+// FAIL: Individual inserts (slow)
 async function insertTrade(trade: Trade) {
   // Don't do this in a loop!
   await clickhouse.query(`

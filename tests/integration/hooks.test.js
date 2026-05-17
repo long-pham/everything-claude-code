@@ -7,10 +7,12 @@
  */
 
 const assert = require('assert');
+const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { spawn } = require('child_process');
+const REPO_ROOT = path.join(__dirname, '..', '..');
 
 // Test helper
 function _test(name, fn) {
@@ -89,25 +91,93 @@ function runHookWithInput(scriptPath, input = {}, env = {}, timeoutMs = 10000) {
   });
 }
 
+function getSessionStartPayload(stdout) {
+  assert.ok(stdout.trim(), 'Expected SessionStart hook to emit stdout payload');
+  const payload = JSON.parse(stdout);
+  assert.strictEqual(payload.hookSpecificOutput?.hookEventName, 'SessionStart');
+  assert.strictEqual(typeof payload.hookSpecificOutput?.additionalContext, 'string');
+  return payload;
+}
+
 /**
- * Run an inline hook command (like those in hooks.json)
- * @param {string} command - The node -e "..." command
+ * Run a hook command string exactly as declared in hooks.json.
+ * Supports wrapped node script commands and shell wrappers.
+ * @param {string} command - Hook command from hooks.json
  * @param {object} input - Hook input object
  * @param {object} env - Environment variables
  */
-function _runInlineHook(command, input = {}, env = {}, timeoutMs = 10000) {
+function runHookCommand(command, input = {}, env = {}, timeoutMs = 10000) {
   return new Promise((resolve, reject) => {
-    // Extract the code from node -e "..."
-    const match = command.match(/^node -e "(.+)"$/s);
-    if (!match) {
-      reject(new Error('Invalid inline hook command format'));
+    const isWindows = process.platform === 'win32';
+    const mergedEnv = { ...process.env, CLAUDE_PLUGIN_ROOT: REPO_ROOT, ...env };
+    if (Array.isArray(command)) {
+      const [program, ...args] = command;
+      const proc = spawn(program, args, { env: mergedEnv, stdio: ['pipe', 'pipe', 'pipe'] });
+
+      let stdout = '';
+      let stderr = '';
+      let timer;
+
+      proc.stdout.on('data', data => stdout += data);
+      proc.stderr.on('data', data => stderr += data);
+
+      proc.stdin.on('error', (err) => {
+        if (err.code !== 'EPIPE' && err.code !== 'EOF') {
+          if (timer) clearTimeout(timer);
+          reject(err);
+        }
+      });
+
+      if (input && Object.keys(input).length > 0) {
+        proc.stdin.write(JSON.stringify(input));
+      }
+      proc.stdin.end();
+
+      timer = setTimeout(() => {
+        proc.kill(isWindows ? undefined : 'SIGKILL');
+        reject(new Error(`Hook command timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      proc.on('close', code => {
+        clearTimeout(timer);
+        resolve({ code, stdout, stderr });
+      });
+
+      proc.on('error', err => {
+        clearTimeout(timer);
+        reject(err);
+      });
       return;
     }
 
-    const proc = spawn('node', ['-e', match[1]], {
-      env: { ...process.env, ...env },
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
+    const resolvedCommand = command.replace(
+      /\$\{([A-Z_][A-Z0-9_]*)\}/g,
+      (_, name) => String(mergedEnv[name] || '')
+    );
+
+    const inlineNodeMatch = resolvedCommand.match(/^node -e "((?:[^"\\]|\\.)*)"(?:\s+(.*))?$/s);
+    const fileNodeMatch = resolvedCommand.match(/^node\s+"([^"]+)"\s*(.*)$/);
+    const useDirectNodeSpawn = Boolean(inlineNodeMatch || fileNodeMatch);
+    const shell = isWindows ? 'cmd' : 'bash';
+    const shellArgs = isWindows ? ['/d', '/s', '/c', resolvedCommand] : ['-lc', resolvedCommand];
+    const splitArgs = value => Array.from(
+      String(value || '').matchAll(/"([^"]*)"|(\S+)/g),
+      m => m[1] !== undefined ? m[1] : m[2]
+    );
+    const unescapeInlineJs = value => value
+      .replace(/\\\\/g, '\\')
+      .replace(/\\"/g, '"')
+      .replace(/\\n/g, '\n')
+      .replace(/\\t/g, '\t');
+    const nodeArgs = inlineNodeMatch
+      ? ['-e', unescapeInlineJs(inlineNodeMatch[1]), ...splitArgs(inlineNodeMatch[2])]
+      : fileNodeMatch
+        ? [fileNodeMatch[1], ...splitArgs(fileNodeMatch[2])]
+        : [];
+
+    const proc = useDirectNodeSpawn
+      ? spawn('node', nodeArgs, { env: mergedEnv, stdio: ['pipe', 'pipe', 'pipe'] })
+      : spawn(shell, shellArgs, { env: mergedEnv, stdio: ['pipe', 'pipe', 'pipe'] });
 
     let stdout = '';
     let stderr = '';
@@ -116,9 +186,9 @@ function _runInlineHook(command, input = {}, env = {}, timeoutMs = 10000) {
     proc.stdout.on('data', data => stdout += data);
     proc.stderr.on('data', data => stderr += data);
 
-    // Ignore EPIPE errors (process may exit before we finish writing)
+    // Ignore EPIPE/EOF errors (process may exit before we finish writing)
     proc.stdin.on('error', (err) => {
-      if (err.code !== 'EPIPE') {
+      if (err.code !== 'EPIPE' && err.code !== 'EOF') {
         if (timer) clearTimeout(timer);
         reject(err);
       }
@@ -130,8 +200,8 @@ function _runInlineHook(command, input = {}, env = {}, timeoutMs = 10000) {
     proc.stdin.end();
 
     timer = setTimeout(() => {
-      proc.kill('SIGKILL');
-      reject(new Error(`Inline hook timed out after ${timeoutMs}ms`));
+      proc.kill(isWindows ? undefined : 'SIGKILL');
+      reject(new Error(`Hook command timed out after ${timeoutMs}ms`));
     }, timeoutMs);
 
     proc.on('close', code => {
@@ -154,6 +224,53 @@ function createTestDir() {
 // Clean up test directory
 function cleanupTestDir(testDir) {
   fs.rmSync(testDir, { recursive: true, force: true });
+}
+
+function getTestHomunculusEnv(testDir) {
+  const xdgDataHome = path.join(testDir, '.local', 'share');
+  return {
+    HOME: testDir,
+    XDG_DATA_HOME: xdgDataHome,
+    homunculusDir: path.join(xdgDataHome, 'ecc-homunculus'),
+  };
+}
+
+function writeInstinctFile(filePath, entries) {
+  const body = entries.map(entry => `---
+id: ${entry.id}
+trigger: "${entry.trigger}"
+confidence: ${entry.confidence}
+domain: ${entry.domain || 'general'}
+scope: ${entry.scope}
+---
+
+## Action
+${entry.action}
+
+## Evidence
+${entry.evidence || 'Learned from repeated observations.'}
+`).join('\n');
+
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, body);
+}
+
+function getHookCommandByDescription(hooks, lifecycle, descriptionText) {
+  const hookGroup = hooks.hooks[lifecycle]?.find(
+    entry => entry.description && entry.description.includes(descriptionText)
+  );
+
+  assert.ok(hookGroup, `Expected ${lifecycle} hook matching "${descriptionText}"`);
+  assert.ok(hookGroup.hooks?.[0]?.command, `Expected ${lifecycle} hook command for "${descriptionText}"`);
+  return hookGroup.hooks[0].command;
+}
+
+function getHookCommandById(hooks, lifecycle, hookId) {
+  const hookGroup = hooks.hooks[lifecycle]?.find(entry => entry.id === hookId);
+
+  assert.ok(hookGroup, `Expected ${lifecycle} hook with id "${hookId}"`);
+  assert.ok(hookGroup.hooks?.[0]?.command, `Expected ${lifecycle} hook command for id "${hookId}"`);
+  return hookGroup.hooks[0].command;
 }
 
 // Test suite
@@ -224,11 +341,14 @@ async function runTests() {
   // ==========================================
   console.log('\nHook Output Format:');
 
-  if (await asyncTest('hooks output messages to stderr (not stdout)', async () => {
+  if (await asyncTest('session-start logs diagnostics to stderr and emits structured stdout when context exists', async () => {
     const result = await runHookWithInput(path.join(scriptsDir, 'session-start.js'), {});
     // Session-start should write info to stderr
     assert.ok(result.stderr.length > 0, 'Should have stderr output');
     assert.ok(result.stderr.includes('[SessionStart]'), 'Should have [SessionStart] prefix');
+    const payload = getSessionStartPayload(result.stdout);
+    assert.ok(payload.hookSpecificOutput, 'Should include hookSpecificOutput');
+    assert.strictEqual(payload.hookSpecificOutput.hookEventName, 'SessionStart');
   })) passed++; else failed++;
 
   if (await asyncTest('PreCompact hook logs to stderr', async () => {
@@ -236,38 +356,19 @@ async function runTests() {
     assert.ok(result.stderr.includes('[PreCompact]'), 'Should output to stderr with prefix');
   })) passed++; else failed++;
 
-  if (await asyncTest('blocking hooks output BLOCKED message', async () => {
-    // Test the dev server blocking hook — must send a matching command
-    const blockingCommand = hooks.hooks.PreToolUse[0].hooks[0].command;
-    const match = blockingCommand.match(/^node -e "(.+)"$/s);
-
-    const proc = spawn('node', ['-e', match[1]], {
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-
-    let stderr = '';
-    let code = null;
-    proc.stderr.on('data', data => stderr += data);
-
-    // Send a dev server command so the hook triggers the block
-    proc.stdin.write(JSON.stringify({
+  if (await asyncTest('dev server hook transforms command to tmux session', async () => {
+    const hookCommand = getHookCommandById(hooks, 'PreToolUse', 'pre:bash:dispatcher');
+    const result = await runHookCommand(hookCommand, {
       tool_input: { command: 'npm run dev' }
-    }));
-    proc.stdin.end();
-
-    await new Promise(resolve => {
-      proc.on('close', (c) => {
-        code = c;
-        resolve();
-      });
     });
 
-    // Hook only blocks on non-Windows platforms (tmux is Unix-only)
-    if (process.platform === 'win32') {
-      assert.strictEqual(code, 0, 'On Windows, hook should not block (exit 0)');
-    } else {
-      assert.ok(stderr.includes('BLOCKED'), 'Blocking hook should output BLOCKED');
-      assert.strictEqual(code, 2, 'Blocking hook should exit with code 2');
+    assert.strictEqual(result.code, 0, 'Hook should exit 0 (transforms, does not block)');
+    // On Unix with tmux, stdout contains transformed JSON with tmux command
+    // On Windows or without tmux, stdout contains original JSON passthrough
+    const output = result.stdout.trim();
+    if (output) {
+      const parsed = JSON.parse(output);
+      assert.ok(parsed.tool_input, 'Should output valid JSON with tool_input');
     }
   })) passed++; else failed++;
 
@@ -281,33 +382,223 @@ async function runTests() {
     assert.strictEqual(result.code, 0, 'Non-blocking hook should exit 0');
   })) passed++; else failed++;
 
-  if (await asyncTest('blocking hooks exit with code 2', async () => {
-    // The dev server blocker blocks when a dev server command is detected
-    const blockingCommand = hooks.hooks.PreToolUse[0].hooks[0].command;
-    const match = blockingCommand.match(/^node -e "(.+)"$/s);
+  if (await asyncTest('session-start registers an observer lease for the active session', async () => {
+    const testDir = createTestDir();
+    const projectDir = path.join(testDir, 'project');
+    fs.mkdirSync(projectDir, { recursive: true });
 
-    const proc = spawn('node', ['-e', match[1]], {
-      stdio: ['pipe', 'pipe', 'pipe']
+    try {
+      const sessionId = `session-${Date.now()}`;
+      const homunculusEnv = getTestHomunculusEnv(testDir);
+      const result = await runHookWithInput(
+        path.join(scriptsDir, 'session-start.js'),
+        {},
+        {
+          HOME: homunculusEnv.HOME,
+          XDG_DATA_HOME: homunculusEnv.XDG_DATA_HOME,
+          CLAUDE_PROJECT_DIR: projectDir,
+          CLAUDE_SESSION_ID: sessionId
+        }
+      );
+
+      assert.strictEqual(result.code, 0, 'SessionStart should exit 0');
+      const projectsDir = path.join(homunculusEnv.homunculusDir, 'projects');
+      const projectEntries = fs.existsSync(projectsDir) ? fs.readdirSync(projectsDir) : [];
+      assert.ok(projectEntries.length > 0, 'SessionStart should create a homunculus project directory');
+      const leaseDir = path.join(projectsDir, projectEntries[0], '.observer-sessions');
+      const leaseFiles = fs.existsSync(leaseDir) ? fs.readdirSync(leaseDir).filter(name => name.endsWith('.json')) : [];
+      assert.ok(leaseFiles.length === 1, `Expected one observer lease file, found ${leaseFiles.length}`);
+    } finally {
+      cleanupTestDir(testDir);
+    }
+  })) passed++; else failed++;
+
+  if (await asyncTest('session-start injects high-confidence instincts into additionalContext', async () => {
+    const testDir = createTestDir();
+    const projectDir = path.join(testDir, 'project');
+    fs.mkdirSync(projectDir, { recursive: true });
+
+    try {
+      const projectId = crypto.createHash('sha256').update(projectDir).digest('hex').slice(0, 12);
+      const homunculusEnv = getTestHomunculusEnv(testDir);
+      const homunculusDir = homunculusEnv.homunculusDir;
+      const projectInstinctDir = path.join(homunculusDir, 'projects', projectId, 'instincts', 'personal');
+      const globalInstinctDir = path.join(homunculusDir, 'instincts', 'inherited');
+
+      writeInstinctFile(path.join(projectInstinctDir, 'project-instincts.yaml'), [
+        {
+          id: 'project-tests-first',
+          trigger: 'when changing tests',
+          confidence: 0.9,
+          scope: 'project',
+          action: 'Run the targeted *.test.js file first, then widen to node tests/run-all.js.',
+        },
+        {
+          id: 'project-low-confidence',
+          trigger: 'when guessing',
+          confidence: 0.4,
+          scope: 'project',
+          action: 'This should never be injected.',
+        },
+      ]);
+
+      writeInstinctFile(path.join(globalInstinctDir, 'global-instincts.yaml'), [
+        {
+          id: 'global-validation',
+          trigger: 'when editing hooks',
+          confidence: 0.82,
+          scope: 'global',
+          action: 'Keep hook scripts, tests, and docs aligned in the same change set.',
+        },
+      ]);
+
+      const result = await runHookWithInput(
+        path.join(scriptsDir, 'session-start.js'),
+        {},
+        {
+          HOME: homunculusEnv.HOME,
+          XDG_DATA_HOME: homunculusEnv.XDG_DATA_HOME,
+          CLAUDE_PROJECT_DIR: projectDir,
+        }
+      );
+
+      assert.strictEqual(result.code, 0, 'SessionStart should exit 0');
+      const payload = getSessionStartPayload(result.stdout);
+      const additionalContext = payload.hookSpecificOutput.additionalContext;
+
+      assert.ok(additionalContext.includes('Active instincts:'), 'Should inject instinct summary into additionalContext');
+      assert.ok(additionalContext.includes('[project 90%] Run the targeted *.test.js file first, then widen to node tests/run-all.js.'), 'Should include project-scoped instinct');
+      assert.ok(additionalContext.includes('[global 82%] Keep hook scripts, tests, and docs aligned in the same change set.'), 'Should include global instinct');
+      assert.ok(!additionalContext.includes('This should never be injected.'), 'Should exclude low-confidence instincts');
+    } finally {
+      cleanupTestDir(testDir);
+    }
+  })) passed++; else failed++;
+
+  if (await asyncTest('session-end-marker removes the last lease and stops the observer process', async () => {
+    const testDir = createTestDir();
+    const projectDir = path.join(testDir, 'project');
+    fs.mkdirSync(projectDir, { recursive: true });
+
+    const sessionId = `session-${Date.now()}`;
+    const sleeper = spawn(process.execPath, ['-e', "process.on('SIGTERM', () => process.exit(0)); setInterval(() => {}, 1000)"], {
+      stdio: 'ignore'
     });
 
-    let code = null;
-    proc.stdin.write(JSON.stringify({
+    try {
+      const homunculusEnv = getTestHomunculusEnv(testDir);
+      await runHookWithInput(
+        path.join(scriptsDir, 'session-start.js'),
+        {},
+        {
+          HOME: homunculusEnv.HOME,
+          XDG_DATA_HOME: homunculusEnv.XDG_DATA_HOME,
+          CLAUDE_PROJECT_DIR: projectDir,
+          CLAUDE_SESSION_ID: sessionId
+        }
+      );
+
+      const projectsDir = path.join(homunculusEnv.homunculusDir, 'projects');
+      const projectEntries = fs.existsSync(projectsDir) ? fs.readdirSync(projectsDir) : [];
+      assert.ok(projectEntries.length > 0, 'Expected SessionStart to create a homunculus project directory');
+      const projectStorageDir = path.join(projectsDir, projectEntries[0]);
+      const pidFile = path.join(projectStorageDir, '.observer.pid');
+      fs.writeFileSync(pidFile, `${sleeper.pid}\n`);
+
+      const markerInput = { hook_event_name: 'SessionEnd' };
+      const result = await runHookWithInput(
+        path.join(scriptsDir, 'session-end-marker.js'),
+        markerInput,
+        {
+          HOME: homunculusEnv.HOME,
+          XDG_DATA_HOME: homunculusEnv.XDG_DATA_HOME,
+          CLAUDE_PROJECT_DIR: projectDir,
+          CLAUDE_SESSION_ID: sessionId
+        }
+      );
+
+      assert.strictEqual(result.code, 0, 'SessionEnd marker should exit 0');
+      assert.strictEqual(result.stdout, JSON.stringify(markerInput), 'SessionEnd marker should pass stdin through unchanged');
+
+      await new Promise(resolve => setTimeout(resolve, 150));
+      const exited = sleeper.exitCode !== null || sleeper.signalCode !== null;
+      let processAlive = !exited;
+      if (processAlive) {
+        try {
+          process.kill(sleeper.pid, 0);
+        } catch {
+          processAlive = false;
+        }
+      }
+      assert.strictEqual(processAlive, false, 'SessionEnd marker should stop the observer process when the last lease ends');
+
+      const leaseDir = path.join(projectStorageDir, '.observer-sessions');
+      const leaseFiles = fs.existsSync(leaseDir) ? fs.readdirSync(leaseDir).filter(name => name.endsWith('.json')) : [];
+      assert.strictEqual(leaseFiles.length, 0, 'SessionEnd marker should remove the finished session lease');
+      assert.strictEqual(fs.existsSync(pidFile), false, 'SessionEnd marker should remove the observer pid file after stopping it');
+    } finally {
+      sleeper.kill();
+      cleanupTestDir(testDir);
+    }
+  })) passed++; else failed++;
+
+  if (await asyncTest('dev server hook transforms yarn dev to tmux session', async () => {
+    const hookCommand = getHookCommandById(hooks, 'PreToolUse', 'pre:bash:dispatcher');
+    const result = await runHookCommand(hookCommand, {
       tool_input: { command: 'yarn dev' }
-    }));
-    proc.stdin.end();
-
-    await new Promise(resolve => {
-      proc.on('close', (c) => {
-        code = c;
-        resolve();
-      });
     });
 
-    // Hook only blocks on non-Windows platforms (tmux is Unix-only)
-    if (process.platform === 'win32') {
-      assert.strictEqual(code, 0, 'On Windows, hook should not block (exit 0)');
-    } else {
-      assert.strictEqual(code, 2, 'Blocking hook should exit 2');
+    // Hook always exits 0 — it transforms, never blocks
+    assert.strictEqual(result.code, 0, 'Hook should exit 0 (transforms, does not block)');
+    const output = result.stdout.trim();
+    if (output) {
+      const parsed = JSON.parse(output);
+      assert.ok(parsed.tool_input, 'Should output valid JSON with tool_input');
+      assert.ok(parsed.tool_input.command, 'Should have a command in output');
+    }
+  })) passed++; else failed++;
+
+  if (await asyncTest('MCP health hook blocks unhealthy MCP tool calls through hooks.json', async () => {
+    const hookCommand = getHookCommandByDescription(
+      hooks,
+      'PreToolUse',
+      'Check MCP server health before MCP tool execution'
+    );
+
+    const testDir = createTestDir();
+    const configPath = path.join(testDir, 'claude.json');
+    const statePath = path.join(testDir, 'mcp-health.json');
+    const serverScript = path.join(testDir, 'broken-mcp.js');
+
+    try {
+      fs.writeFileSync(serverScript, 'process.exit(1);\n');
+      fs.writeFileSync(
+        configPath,
+        JSON.stringify({
+          mcpServers: {
+            broken: {
+              command: process.execPath,
+              args: [serverScript]
+            }
+          }
+        })
+      );
+
+      const result = await runHookCommand(
+        hookCommand,
+        { tool_name: 'mcp__broken__search', tool_input: {} },
+        {
+          CLAUDE_HOOK_EVENT_NAME: 'PreToolUse',
+          ECC_MCP_CONFIG_PATH: configPath,
+          ECC_MCP_HEALTH_STATE_PATH: statePath,
+          ECC_MCP_HEALTH_TIMEOUT_MS: '1000'
+        }
+      );
+
+      assert.strictEqual(result.code, 2, 'Expected unhealthy MCP preflight to block');
+      assert.ok(result.stderr.includes('broken is unavailable'), `Expected health warning, got: ${result.stderr}`);
+    } finally {
+      cleanupTestDir(testDir);
     }
   })) passed++; else failed++;
 
@@ -384,33 +675,14 @@ async function runTests() {
   })) passed++; else failed++;
 
   if (await asyncTest('PostToolUse PR hook extracts PR URL', async () => {
-    // Find the PR logging hook
-    const prHook = hooks.hooks.PostToolUse.find(h =>
-      h.description && h.description.includes('PR URL')
-    );
-
-    assert.ok(prHook, 'PR hook should exist');
-
-    const match = prHook.hooks[0].command.match(/^node -e "(.+)"$/s);
-
-    const proc = spawn('node', ['-e', match[1]], {
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-
-    let stderr = '';
-    proc.stderr.on('data', data => stderr += data);
-
-    // Simulate gh pr create output
-    proc.stdin.write(JSON.stringify({
+    const hookCommand = getHookCommandById(hooks, 'PostToolUse', 'post:bash:dispatcher');
+    const result = await runHookCommand(hookCommand, {
       tool_input: { command: 'gh pr create --title "Test"' },
       tool_output: { output: 'Creating pull request...\nhttps://github.com/owner/repo/pull/123' }
-    }));
-    proc.stdin.end();
-
-    await new Promise(resolve => proc.on('close', resolve));
+    });
 
     assert.ok(
-      stderr.includes('PR created') || stderr.includes('github.com'),
+      result.stderr.includes('PR created') || result.stderr.includes('github.com'),
       'Should extract and log PR URL'
     );
   })) passed++; else failed++;
@@ -678,8 +950,24 @@ async function runTests() {
     assert.strictEqual(typeof asyncHook.hooks[0].timeout, 'number', 'Timeout should be a number');
     assert.ok(asyncHook.hooks[0].timeout > 0, 'Timeout should be positive');
 
-    const match = asyncHook.hooks[0].command.match(/^node -e "(.+)"$/s);
-    assert.ok(match, 'Async hook command should be node -e format');
+    const command = asyncHook.hooks[0].command;
+    const commandText = Array.isArray(command) ? command.join(' ') : command;
+    const isNodeInline =
+      (Array.isArray(command) && command[0] === 'node' && command[1] === '-e') ||
+      commandText.startsWith('node -e');
+    const isNodeScript =
+      (Array.isArray(command) && command[0] === 'node' && typeof command[1] === 'string' && command[1].endsWith('.js')) ||
+      commandText.startsWith('node "');
+    const isShellWrapper =
+      (Array.isArray(command) && (command[0] === 'bash' || command[0] === 'sh')) ||
+      commandText.startsWith('bash "') ||
+      commandText.startsWith('sh "') ||
+      commandText.startsWith('bash -lc ') ||
+      commandText.startsWith('sh -c ');
+    assert.ok(
+      isNodeInline || isNodeScript || isShellWrapper,
+      `Async hook command should be runnable (node -e, node script, or shell wrapper), got: ${commandText.substring(0, 80)}`
+    );
   })) passed++; else failed++;
 
   if (await asyncTest('all hook commands in hooks.json are valid format', async () => {
@@ -690,12 +978,28 @@ async function runTests() {
         for (const hook of hookDef.hooks) {
           assert.ok(hook.command, `Hook in ${hookType} should have command field`);
 
-          const isInline = hook.command.startsWith('node -e');
-          const isFilePath = hook.command.startsWith('node "');
+          const command = hook.command;
+          const commandText = Array.isArray(command) ? command.join(' ') : command;
+          const isInline =
+            (Array.isArray(command) && command[0] === 'node' && command[1] === '-e') ||
+            commandText.startsWith('node -e');
+          const isFilePath =
+            (Array.isArray(command) && command[0] === 'node' && typeof command[1] === 'string' && command[1].endsWith('.js')) ||
+            commandText.startsWith('node "');
+          const isNpx = (Array.isArray(command) && command[0] === 'npx') || commandText.startsWith('npx ');
+          const isShellWrapper =
+            (Array.isArray(command) && (command[0] === 'bash' || command[0] === 'sh')) ||
+            commandText.startsWith('bash "') ||
+            commandText.startsWith('sh "') ||
+            commandText.startsWith('bash -lc ') ||
+            commandText.startsWith('sh -c ');
+          const isShellScriptPath =
+            (Array.isArray(command) && typeof command[0] === 'string' && command[0].endsWith('.sh')) ||
+            commandText.endsWith('.sh');
 
           assert.ok(
-            isInline || isFilePath,
-            `Hook command in ${hookType} should be inline (node -e) or file path (node "), got: ${hook.command.substring(0, 50)}`
+            isInline || isFilePath || isNpx || isShellWrapper || isShellScriptPath,
+            `Hook command in ${hookType} should be node -e, node script, npx, or shell wrapper/script, got: ${commandText.substring(0, 80)}`
           );
         }
       }
